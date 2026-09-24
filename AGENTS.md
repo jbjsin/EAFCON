@@ -4,7 +4,7 @@ Read `agent.md` for the development plan, verified Gemini hardware facts, safety
 
 ## Current implementation state
 
-- EAFCON 1.0.0 includes the Gemini cartoon launcher icon, named APK output, USB serial adapter, protocol/control layers, and Compose UI. The user confirmed the app works with a physical Gemini EAF; other MyFocuserPro2-compatible EAF models remain untested.
+- EAFCON 1.0.2 includes the Gemini cartoon launcher icon with added white margins, named APK output, USB serial adapter, protocol/control layers, and Compose UI. The user confirmed the app works with a physical Gemini EAF; other MyFocuserPro2-compatible EAF models remain untested.
 - Keep the public README and developer instructions aligned with the code. Clearly distinguish Gemini physical testing from untested compatible devices.
 - Do not guess protocol commands. STOP may use only the source-backed `:27#` documented in `agent.md`; physical stop behavior remains unverified. Do not send set-maximum commands.
 

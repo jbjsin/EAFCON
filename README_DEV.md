@@ -17,7 +17,7 @@ From PowerShell at the repository root:
 
 Both commands were run successfully on this workstation on 2026-09-24 (`BUILD SUCCESSFUL`; debug APK and JVM unit tests completed). Unit tests do not count as physical hardware validation.
 
-The debug APK is written to `app/build/outputs/apk/debug/EAFCON_1.0.0.apk`. In Android Studio, open the repository root and sync the Gradle project; install SDK Platform 36 and JDK 17 first. The checked-in wrapper uses Gradle 8.13 with Android Gradle Plugin 8.13.2. The launcher uses the generated Gemini focuser cartoon artwork, and the app label is `EAFCON`.
+The debug APK is written to `app/build/outputs/apk/debug/EAFCON_1.0.2.apk`. In Android Studio, open the repository root and sync the Gradle project; install SDK Platform 36 and JDK 17 first. The checked-in wrapper uses Gradle 8.13 with Android Gradle Plugin 8.13.2. The launcher uses the generated Gemini focuser cartoon artwork, scaled to leave about one-sixth of the square canvas as white margin on each side, and the app label is `EAFCON`.
 
 ## Architecture
 

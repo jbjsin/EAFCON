@@ -34,7 +34,7 @@ The project has also been built and tested with a simulated focuser. Demo mode i
 
 ## Build
 
-The Android Studio project targets Android API 35 and compiles against API 36. Developer setup and build instructions are in [README_DEV.md](README_DEV.md). The version 1.0.0 debug APK is named `EAFCON_1.0.0.apk`.
+The Android Studio project targets Android API 35 and compiles against API 36. Developer setup and build instructions are in [README_DEV.md](README_DEV.md). The version 1.0.2 debug APK is named `EAFCON_1.0.2.apk`.
 
 ## Safety
 
