@@ -2,7 +2,7 @@
 
 ## 현재 상태와 문서 기준
 
-- EAFCON Android 앱과 Gemini focuser cartoon 런처 아이콘이 구현되었다. 런처 아트는 포커서 전체가 보이도록 중앙에 축소하고 가장자리에 흰 여백을 두었다. 사용자는 Gemini EAF에서 앱이 만족스럽게 작동함을 확인했다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. Temurin JDK 17, Android Studio, Android SDK Platform 36, Platform Tools, Build Tools, Gradle 8.13 wrapper를 설치했다. 현재 앱 버전은 1.0.2이며 APK 이름은 `EAFCON_1.0.2.apk`다.
+- EAFCON Android 앱과 Gemini focuser cartoon 런처 아이콘이 구현되었다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 앱이 만족스럽게 작동함을 확인했다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. Temurin JDK 17, Android Studio, Android SDK Platform 36, Platform Tools, Build Tools, Gradle 8.13 wrapper를 설치했다. 현재 앱 버전은 1.0.2이며 APK 이름은 `EAFCON_1.0.2.apk`다. 같은 표시 버전의 업데이트 빌드는 Android `versionCode`를 증가시킨다.
 - 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED/ASSUMED/UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
 - 실제 패키지 경로와 현재 빌드 버전은 `app/` 및 `gradle/libs.versions.toml`에 고정했다. `gradlew` wrapper와 SDK 경로가 설정된 로컬 `local.properties`가 준비되어 있다. `local.properties`는 추적하지 않는다.
 - 이후 작업자는 수정 전 두 지침 파일을 읽고, 구조나 작업 흐름이 바뀌면 같은 변경에서 문서도 갱신한다.
