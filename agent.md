@@ -2,7 +2,7 @@
 
 ## 현재 상태와 문서 기준
 
-- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 앱이 만족스럽게 작동함을 확인했다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 현재 앱 버전은 1.1.1, package/application ID는 `dev.sphc.eafcon`, `compileSdk`/`targetSdk`는 36이며 APK 이름은 `EAFCON_1.1.1.apk`다. 이전 개발 package `com.astrophoto.geminifocuser`와는 별도 Android 앱으로 설치된다.
+- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 앱이 만족스럽게 작동함을 확인했다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 현재 테스트 버전은 1.1.2, package/application ID는 `dev.sphc.eafcon`, `compileSdk`/`targetSdk`는 36이며 APK 이름은 `EAFCON_1.1.2.apk`다. 이전 개발 package `com.astrophoto.geminifocuser`와는 별도 Android 앱으로 설치된다.
 - 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED / SOURCE-VERIFIED·HARDWARE-UNVERIFIED / UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
 - 실제 패키지 경로와 현재 빌드 버전은 `app/` 및 `gradle/libs.versions.toml`에 고정했다. `gradlew` wrapper와 SDK 경로가 설정된 로컬 `local.properties`가 준비되어 있다. `local.properties`는 추적하지 않는다.
 - 이후 작업자는 수정 전 두 지침 파일을 읽고, 구조나 작업 흐름이 바뀌면 같은 변경에서 문서도 갱신한다.
@@ -63,13 +63,14 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 - 프리셋 선택은 target position 필드만 채우며 이동 명령을 실행하지 않는다. 프리셋 생성/수정과 import는 비음수 정수 및 알려진 software/device maximum을 검사한다. 실제 이동은 기존 controller 제한을 통과하는 명시적인 GO 동작에서만 발생한다.
 - USB SCAN은 열거와 표시만 한다. 후보 포트 open, 인터페이스 claim/force claim, reset, protocol probe, USB command는 금지한다. 사용자가 특정 장치를 선택하고 CONNECT를 누른 뒤에만 open/claim한다. 경로, deviceId, bus/device 번호는 임시 세션 정보이고 VID/PID는 장비 identity가 아니다.
 - 호환 장치가 하나면 자동 선택할 수 있다. 둘 이상이면 이전에 명시적으로 선택한 deviceName/path가 계속 존재할 때만 유지하며, 그렇지 않으면 선택을 비워 사용자가 직접 고르게 한다. VID/PID가 같은 CH340 장치를 첫 항목이라는 이유로 선택하지 않는다.
+- 1.1.1 실기 시험에서 Gemini와 SeRelCam용 CH340 릴레이를 동시에 연결하고 EAFCON은 미접속인 상태에서 릴레이 분리/재연결은 해당 항목만 정상 변경되었으나, Gemini를 분리하면 전체 스캔 목록이 사라지는 현상이 확인되었다. 시험 Android에는 SvBony USB 카메라 앱과 USB Serial Terminal도 설치되어 있었다. 1.1.2는 장치별 probe 실패를 격리하고, 분리 항목만 즉시 제거하며, 중복 스캔 취소와 USB 목록 안정화 지연/빈 목록 재시도를 적용했다. 이 수정은 같은 물리 구성에서 재검증하기 전까지 UNVERIFIED다.
 - Preset JSON은 `format = EAFCon Focuser Presets`, `version = 1`로 버전 관리하며, 가져오기는 파일 전체 검증 후에만 적용한다. Merge는 동일 ID 항목을 갱신하고 새 ID는 추가하며, 이름이 같고 ID가 다른 항목은 각각 보존한다. Replace는 검증과 별도 사용자 확인 뒤 수행한다. schema 변경에는 명시적 마이그레이션을 추가한다.
 
 ## 검증 상태 분류
 
 - **VERIFIED:** 실제 Gemini EAF의 CH34x 열거, Android USB Host 통신, 9600 8N1, `:02#`/`EOK#`, `:00#` 위치, `:01#` 이동 상태, `:06#` 온도, `:08#` 최대 위치, 정규 `:05<position>#` 절대 이동, 장거리 이동의 `I1#` → `I0#`, 기존 EAFCON을 통한 실제 장치 운용.
 - **SOURCE-VERIFIED / HARDWARE-UNVERIFIED ON GEMINI:** STOP/Abort `:27#`. INDI MyFocuserPro2 소스에 근거해 구현했지만 이 Gemini에서 별도 물리 정지 결과가 기록되지 않았다.
-- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 정확한 1.1.1 빌드의 실기 회귀 결과.
+- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 정확한 1.1.2 빌드의 USB 분리 복구 및 전체 실기 회귀 결과.
 - 문서와 완료 보고는 위 등급을 유지한다. 기존 Gemini 검증 기록과 현재 릴리즈의 미실행 회귀 시험을 혼동하지 않는다.
 
 ## 구현 순서와 단계별 완료 조건

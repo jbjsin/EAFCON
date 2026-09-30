@@ -42,9 +42,9 @@ These historical results do not replace regression testing for each release. The
 
 ## Android and builds
 
-EAFCON 1.1.1 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.1.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
+EAFCON 1.1.2 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.2.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
 
-The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from development builds, 1.1.1 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation.
+The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.2 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1, when signed with the same key.
 
 ## Development progress
 
@@ -63,7 +63,8 @@ The Google Play listing is not published yet. The final application ID has been 
 - Google Play account/release preparation and release signing setup.
 - API 36 regression validation on Android hardware.
 - Explicit physical Gemini STOP validation.
-- Physical validation of preset and identical-VID/PID multi-device flows.
+- Physical revalidation of Gemini detach/reconnect while the SeRelCam relay remains attached.
+- Physical validation of preset and remaining identical-VID/PID multi-device flows.
 
 ### PLANNED
 

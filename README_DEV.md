@@ -4,16 +4,16 @@
 
 Use Android Studio with JDK 17, Android SDK Platform 36, and the Gradle/Android Gradle Plugin versions pinned by the repository. The local SDK path belongs in ignored `local.properties`.
 
-EAFCON 1.1.1 uses:
+EAFCON 1.1.2 uses:
 
 - Namespace and application ID: `dev.sphc.eafcon`
 - `minSdk = 26`
 - `compileSdk = 36`
 - `targetSdk = 36`
-- `versionCode = 6`
-- `versionName = 1.1.1`
+- `versionCode = 7`
+- `versionName = 1.1.2`
 
-The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.1 as a separate application rather than an in-place update of those builds. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
+The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.2 as a separate application rather than an in-place update of those builds. It updates 1.1.1 when both APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
 
 The project uses Kotlin, Jetpack Compose, AndroidX Lifecycle, Coroutines, and `usb-serial-for-android` 3.11.0. The serial dependency is published through JitPack, supports CH340/CH341 devices, and is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -27,7 +27,7 @@ From PowerShell at the repository root:
 .\gradlew.bat :app:bundleRelease
 ```
 
-Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.1.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
+Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.2.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
 
 - A debug APK is signed with the local Android debug key and is intended for development/testing.
 - A release APK is an installable release-mode package, but this project does not currently define a production signing configuration.
@@ -96,6 +96,10 @@ Selection policy is pure and unit-tested:
 
 The Connect button remains disabled without a selection. Device path/name, deviceId, and Bus/Device values are only per-enumeration hints and never persistent identity. VID/PID never identifies Gemini by itself.
 
+USB topology refreshes cancel an older pending refresh, wait briefly for `UsbManager.deviceList` to settle, and retry one unexpected empty result. A detach broadcast removes only its matching path from the current UI list immediately. Device inspection is isolated per entry so a stale device that disappears during probing cannot discard successfully enumerated neighboring devices. Scan still does not open, claim, reset, probe the focuser protocol, or send commands.
+
+The 1.1.1 field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconnected; SvBony USB camera software and USB Serial Terminal were also installed. Relay removal/reconnection changed only the relay entry, but Gemini removal caused all scan entries to disappear. The 1.1.2 stabilization above addresses the identified app-side failure paths and still requires repetition on that exact setup.
+
 ## Serial and controller review
 
 `UsbSerialPortTransport` serializes send/exchange/close with one mutex. It accepts fragmented frames and finds the expected response among coalesced frames. The parser is reset on open, close, and before a new exchange so a partial frame left by a timed-out request cannot contaminate the next command. Android integration testing remains necessary for late physical responses and USB removal during a read.
@@ -104,7 +108,7 @@ The Connect button remains disabled without a selection. Device path/name, devic
 
 ## Verified local build result
 
-On 2026-09-30, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleRelease` completed successfully with JDK 17 and Android SDK 36. All 29 JVM tests passed. The generated debug APK metadata reports `dev.sphc.eafcon`, version code 6, and version name 1.1.1. The generated release AAB is intentionally unsigned because production upload signing has not been configured.
+On 2026-09-30, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleRelease` completed successfully with JDK 17 and Android SDK 36. All 31 JVM tests passed. The generated debug APK metadata reports `dev.sphc.eafcon`, version code 7, and version name 1.1.2. The generated release AAB remains intentionally unsigned because production upload signing is not configured.
 
 ## Verification model
 
@@ -131,11 +135,12 @@ On 2026-09-30, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleR
 - RTS/DTR requirements on other hardware.
 - Safe automatic Gemini identification.
 - Commands that change device maximum; EAFCON does not send one.
-- Preset and multi-device behavior on the exact 1.1.1 Android build until manually tested.
+- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.2 Android build.
+- Preset behavior on the exact 1.1.2 Android build until manually tested.
 
-Historical verification does not mean the exact 1.1.1 build has completed regression testing.
+Historical verification does not mean the exact 1.1.2 build has completed regression testing.
 
-## 1.1.1 hardware regression checklist
+## 1.1.2 hardware regression checklist
 
 - [ ] Detect the Gemini CH34x and distinguish it from another matching VID/PID device.
 - [ ] Grant USB permission and connect at 9600 8N1.
@@ -149,6 +154,9 @@ Historical verification does not mean the exact 1.1.1 build has completed regres
 - [ ] Detach USB while connected and confirm disconnection/error state and command blocking.
 - [ ] Confirm preset create/edit/delete, restart persistence, JSON export, Merge, confirmed Replace, and failure rollback.
 - [ ] Run Scan while another app owns a USB serial device and confirm the other connection is unaffected.
+- [ ] With Gemini and the SeRelCam relay listed but disconnected, remove/reinsert the relay and confirm only that entry changes.
+- [ ] Remove/reinsert Gemini while the relay remains attached and confirm the relay never disappears permanently.
+- [ ] Repeat with SvBony USB camera software and USB Serial Terminal installed/running as in the reported setup.
 
 ## Continuous integration
 

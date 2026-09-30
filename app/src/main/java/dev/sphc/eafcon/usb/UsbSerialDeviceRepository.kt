@@ -26,9 +26,10 @@ class UsbSerialDeviceRepository(context: Context) {
 
     fun listDevices(): List<UsbSerialDevice> {
         val prober = UsbSerialProber.getDefaultProber()
-        return usbManager.deviceList.values.mapNotNull { device ->
+        val snapshot = usbManager.deviceList.values.toList()
+        return mapDevicesIndependently(snapshot) { device ->
             // Probing maps descriptors to a serial driver; it does not open or claim the device.
-            val driver = prober.probeDevice(device) ?: return@mapNotNull null
+            val driver = prober.probeDevice(device) ?: return@mapDevicesIndependently null
             val busAndDevice = UsbDeviceDisplayInfo.parseBusAndDevice(device.deviceName)
             val rawDriverName = driver.javaClass.simpleName.removeSuffix("SerialDriver")
             val displayDriverName = if (rawDriverName.equals("Ch34x", ignoreCase = true)) "CH34x" else rawDriverName

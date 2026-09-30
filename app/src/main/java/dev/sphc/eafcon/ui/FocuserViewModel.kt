@@ -25,6 +25,8 @@ import dev.sphc.eafcon.usb.selectUsbDevice
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,13 +63,15 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
     )
     val state: StateFlow<FocuserUiState> = mutableState.asStateFlow()
     private var connectedDeviceId: Int? = null
+    private var deviceRefreshJob: Job? = null
     private val usbEventsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                UsbManager.ACTION_USB_DEVICE_ATTACHED -> refreshDevices()
+                UsbManager.ACTION_USB_DEVICE_ATTACHED -> scheduleTopologyRefresh()
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     val device = intent.usbDeviceExtra()
-                    refreshDevices()
+                    if (device != null) removeDetachedDevice(device)
+                    scheduleTopologyRefresh()
                     if (device?.deviceId == connectedDeviceId) {
                         viewModelScope.launch {
                             controller.disconnect()
@@ -105,11 +109,28 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshDevices() {
-        viewModelScope.launch {
-            val devices = runCatching { withContext(Dispatchers.IO) { repository.listDevices() } }
-                .getOrElse { error ->
-                    mutableState.update { it.copy(message = error.message ?: "Unable to scan USB devices") }
-                    emptyList()
+        startDeviceRefresh(settleDelayMs = 0, retryUnexpectedEmpty = false)
+    }
+
+    private fun scheduleTopologyRefresh() {
+        startDeviceRefresh(
+            settleDelayMs = USB_TOPOLOGY_SETTLE_MS,
+            retryUnexpectedEmpty = true,
+        )
+    }
+
+    private fun startDeviceRefresh(settleDelayMs: Long, retryUnexpectedEmpty: Boolean) {
+        deviceRefreshJob?.cancel()
+        deviceRefreshJob = viewModelScope.launch {
+            if (settleDelayMs > 0) delay(settleDelayMs)
+            val devices = try {
+                scanDevices(retryUnexpectedEmpty)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                // A transient Android USB enumeration failure must not erase known neighbors.
+                mutableState.update { it.copy(message = error.message ?: "Unable to scan USB devices") }
+                return@launch
             }
             mutableState.update { old ->
                 val selected = selectUsbDevice(
@@ -123,6 +144,32 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
                     selectedDeviceIsExplicit = selected.isExplicit,
                 )
             }
+        }
+    }
+
+    private suspend fun scanDevices(retryUnexpectedEmpty: Boolean): List<UsbSerialDevice> {
+        val first = withContext(Dispatchers.IO) { repository.listDevices() }
+        if (!retryUnexpectedEmpty || first.isNotEmpty() || mutableState.value.devices.isEmpty()) {
+            return first
+        }
+        // USB topology broadcasts can arrive before UsbManager's device list has settled.
+        delay(USB_EMPTY_RETRY_MS)
+        return withContext(Dispatchers.IO) { repository.listDevices() }
+    }
+
+    private fun removeDetachedDevice(device: UsbDevice) {
+        mutableState.update { old ->
+            val remaining = old.devices.filterNot { it.name == device.deviceName }
+            val selected = selectUsbDevice(
+                old.selectedDeviceName,
+                old.selectedDeviceIsExplicit,
+                remaining.map { it.name },
+            )
+            old.copy(
+                devices = remaining,
+                selectedDeviceName = selected.deviceName,
+                selectedDeviceIsExplicit = selected.isExplicit,
+            )
         }
     }
 
@@ -342,6 +389,7 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
+        deviceRefreshJob?.cancel()
         runCatching { getApplication<Application>().unregisterReceiver(usbEventsReceiver) }
         // Close USB deterministically before ViewModel scope cancellation; no orphan cleanup scope.
         runCatching { runBlocking(Dispatchers.IO) { controller.disconnect() } }
@@ -353,5 +401,10 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
         getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
     } else {
         getParcelableExtra(UsbManager.EXTRA_DEVICE)
+    }
+
+    private companion object {
+        const val USB_TOPOLOGY_SETTLE_MS = 300L
+        const val USB_EMPTY_RETRY_MS = 500L
     }
 }
