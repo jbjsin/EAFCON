@@ -98,7 +98,7 @@ The Connect button remains disabled without a selection. Device path/name, devic
 
 USB topology refreshes cancel an older pending refresh, wait briefly for `UsbManager.deviceList` to settle, and retry one unexpected empty result. A detach broadcast removes only its matching path from the current UI list immediately. Device inspection is isolated per entry so a stale device that disappears during probing cannot discard successfully enumerated neighboring devices. Scan still does not open, claim, reset, probe the focuser protocol, or send commands.
 
-The 1.1.1 field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconnected; SvBony USB camera software and USB Serial Terminal were also installed. Relay removal/reconnection changed only the relay entry, but Gemini removal caused all scan entries to disappear. The 1.1.2 stabilization above addresses the identified app-side failure paths and still requires repetition on that exact setup.
+The field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconnected; SvBony USB camera software and USB Serial Terminal were also installed. In 1.1.1, relay removal/reconnection changed only the relay entry, while Gemini removal temporarily cleared all scan entries. The 1.1.2 stabilization fixed that removal display path. Further testing showed that inserting Gemini physically disconnects the already attached relay and Android then re-enumerates both devices; the list subsequently recovers without manual Scan. This is a host/hub topology or power-layer bus reset rather than a Scan-only failure. EAFCON cannot preserve another application's open serial handle across it, and it must not auto-reconnect because the devices share VID/PID while their temporary paths may change.
 
 ## Serial and controller review
 
@@ -136,6 +136,7 @@ On 2026-09-30, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleR
 - Safe automatic Gemini identification.
 - Commands that change device maximum; EAFCON does not send one.
 - USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.2 Android build.
+- Whether a sufficiently powered hub, separate Gemini power applied before USB, or a different hub/cable prevents the whole-bus reset during Gemini insertion.
 - Preset behavior on the exact 1.1.2 Android build until manually tested.
 
 Historical verification does not mean the exact 1.1.2 build has completed regression testing.
@@ -157,6 +158,8 @@ Historical verification does not mean the exact 1.1.2 build has completed regres
 - [ ] With Gemini and the SeRelCam relay listed but disconnected, remove/reinsert the relay and confirm only that entry changes.
 - [ ] Remove/reinsert Gemini while the relay remains attached and confirm the relay never disappears permanently.
 - [ ] Repeat with SvBony USB camera software and USB Serial Terminal installed/running as in the reported setup.
+- [ ] Repeat Gemini insertion with a powered hub and Gemini external power already stable; note whether USB Serial Terminal keeps its relay handle.
+- [ ] Connect both peripherals to the powered hub before attaching the hub upstream to Android and compare the result with hot-plugging Gemini.
 
 ## Continuous integration
 

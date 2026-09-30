@@ -4,7 +4,7 @@ Read `agent.md` for the development plan, verified Gemini hardware facts, safety
 
 ## Current implementation state
 
-- EAFCON 1.1.2 uses package/application ID `dev.sphc.eafcon`, targets API 36, and includes persistent presets, SAF JSON import/export, richer USB metadata, and passive device scanning. The 1.1.2 candidate isolates per-device scan failures and stabilizes attach/detach rescans after a 1.1.1 field test found that removing Gemini could temporarily clear every listed device. Gemini is the physically tested focuser; the exact 1.1.2 fix still needs hardware regression testing and other compatible models remain unverified.
+- EAFCON 1.1.2 uses package/application ID `dev.sphc.eafcon`, targets API 36, and includes persistent presets, SAF JSON import/export, richer USB metadata, and passive device scanning. Field testing confirmed that its detach-list fix works. Connecting Gemini physically disconnects an already attached SeRelCam relay and then both devices re-enumerate; treat this as Android host/hub topology or power behavior rather than a Scan-only failure. Gemini is the physically tested focuser and other compatible models remain unverified.
 - Keep the public README and developer instructions aligned with the code. Clearly distinguish Gemini physical testing from untested compatible devices.
 - Do not guess protocol commands. STOP may use only source-verified `:27#`; Gemini physical STOP remains hardware-unverified. Never send an unverified set-maximum command.
 
@@ -18,6 +18,7 @@ Read `agent.md` for the development plan, verified Gemini hardware facts, safety
 - Treat USB path, deviceId, Bus/Device numbers as temporary session details, not persistent identity. Never identify hardware by VID/PID alone.
 - With multiple compatible devices, preserve a still-present explicit selection but never auto-select a new first device. Connect stays disabled until selection.
 - A stale or detached USB entry must not erase successfully enumerated neighboring devices. Serialize/cancel overlapping rescans and allow Android's USB list to settle after topology broadcasts.
+- Do not claim EAFCON can preserve another app's serial connection across a physical USB bus reset. Automatic reconnection is unsafe when re-enumerated devices share VID/PID and temporary paths change.
 - Validate the complete versioned preset JSON import before changing stored data. Merge/Replace behavior and Replace confirmation must remain explicit.
 - Documentation must distinguish VERIFIED, SOURCE-VERIFIED/HARDWARE-UNVERIFIED, and UNVERIFIED facts.
 - Never commit signing keystores, passwords, local signing properties, or other release secrets.
