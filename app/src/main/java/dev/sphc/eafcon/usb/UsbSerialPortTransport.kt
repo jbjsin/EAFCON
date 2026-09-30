@@ -1,7 +1,7 @@
-package com.astrophoto.geminifocuser.usb
+package dev.sphc.eafcon.usb
 
 import android.hardware.usb.UsbDeviceConnection
-import com.astrophoto.geminifocuser.protocol.DelimitedResponseParser
+import dev.sphc.eafcon.protocol.DelimitedResponseParser
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -22,6 +22,7 @@ class UsbSerialPortTransport(
         port.open(connection)
         port.setParameters(9600, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
         port.setFlowControl(UsbSerialPort.FlowControl.NONE)
+        parser.reset()
         opened = true
     }
 
@@ -35,6 +36,8 @@ class UsbSerialPortTransport(
     override suspend fun exchange(command: String, expectedPrefix: String): String = mutex.withLock {
         withContext(Dispatchers.IO) {
             check(opened) { "Serial port is closed" }
+            // Discard a partial frame left behind by a previous timed-out exchange.
+            parser.reset()
             port.write(command.toByteArray(StandardCharsets.US_ASCII), IO_TIMEOUT_MS)
             val deadline = System.nanoTime() + RESPONSE_TIMEOUT_NS
             val buffer = ByteArray(256)

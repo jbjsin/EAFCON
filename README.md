@@ -1,45 +1,79 @@
 # EAFCON
 
-EAFCON is designed to work with electronic focusers that use the MyFocuserPro2 serial protocol. General use should be possible with compatible EAFs, but physical-device testing so far has been done only with the Gemini Focuser. If you try another compatible focuser, please share your results.
+**Developer: SongPaHaeChi · SPHC**
 
-**Developer: SongPaHaeChi**
-
-EAFCON is an Android USB-serial app for viewing focuser status and making manual focus adjustments. It has been tested on a Galaxy Fold4 with a Gemini EAF using a CH340/CH34x USB-serial adapter.
+EAFCON is an Android USB serial controller for manual electronic focuser operation. Gemini Focuser is the physically tested device. The command set targets MyFocuserPro2-compatible focusers, but compatibility with other models is not guaranteed and remains unverified.
 
 ## Features
 
-- Manually select a USB serial device, then connect or disconnect from the same button.
-- View current position, movement state, temperature, and the device-reported maximum position.
-- Set a software safety limit before moving.
-- Move to an absolute position or use relative step controls.
-- Stop an in-progress move with the STOP button. STOP is available only while the focuser reports that it is moving.
-- Use Demo mode to exercise the controls without a focuser.
+- Passive USB serial discovery with manual device selection and Android USB permission handling.
+- Safer selection when identical CH340 devices share VID/PID: one device may be selected automatically, while two or more require an explicit choice.
+- Current position, movement state, temperature, and device-reported maximum display.
+- User-configured software safety maximum enforced before movement.
+- Absolute movement, ±5/±25/±50/±100 relative movement, and custom relative steps.
+- Named position presets with persistent storage and portable JSON import/export through Android's file picker.
+- Demo mode for exercising the UI without hardware.
+- STOP button while moving. STOP uses the source-backed MyFocuserPro2 `:27#` abort command; physical STOP behavior on the Gemini EAF remains to be explicitly verified.
+- Parser support for fragmented and coalesced `#`-terminated serial responses.
 
 ## Connect and focus
 
-1. Connect the focuser to an Android device that supports USB Host using a USB-C OTG adapter or powered hub as needed.
-2. Open EAFCON, scan for USB devices, and select the intended focuser manually. Devices can share USB identifiers, so EAFCON does not auto-select a focuser by VID/PID.
+1. Connect the focuser to an Android device with USB Host support, using an OTG adapter or powered hub as needed.
+2. Open EAFCON and tap **Scan**. When multiple compatible serial devices are present, select the intended device explicitly; VID/PID alone does not identify a Gemini Focuser.
 3. Tap **Connect** and grant Android USB permission.
-4. Set a software safety maximum that stays within the focuser's mechanical travel.
-5. Enter an absolute target or choose a relative step. During a move, use **STOP** to halt it.
+4. Set a conservative software safety maximum within the focuser's mechanical travel.
+5. Enter a target or use a relative control. Movement occurs only after an explicit GO or relative-move action.
 6. Tap **Disconnect** when finished.
 
-The app uses 9600 baud, 8 data bits, no parity, one stop bit, and no flow control. A known software maximum is required before movement is enabled. EAFCON does not provide autofocus, and it does not change the device's configured maximum position.
+Preset selection only fills **Target Position**. Preset CRUD and JSON import/export never move hardware. Import validates the complete file before offering Merge or confirmed Replace.
 
-## Compatibility and testing
+USB **Scan** only enumerates serial-capable devices and reads available metadata. It does not open or claim ports, reset devices, probe protocols, or send commands. Device path, deviceId, and Bus/Device values help distinguish devices only during the current Android USB enumeration and are not persistent hardware identities.
 
-The serial command set follows MyFocuserPro2-compatible EAF behavior. Other EAFs using that protocol may work, but Gemini Focuser is the only physical focuser tested so far. USB-serial chipsets, firmware variations, and Android device behavior may affect compatibility. Please test cautiously within the focuser's safe travel and report the focuser model, Android device, and results.
+## Compatibility and verification
 
-The project has also been built and tested with a simulated focuser. Demo mode is not a substitute for checking a physical device.
+Historically verified on a physical Gemini EAF with Android USB Host and a CH340/CH34x adapter:
 
-## Build
+- 9600 baud, 8 data bits, no parity, one stop bit, no flow control.
+- `:02#` handshake, `:00#` position, `:01#` movement state, `:06#` temperature, and `:08#` device maximum.
+- Canonical `:05<position>#` absolute movement and the `I1#` to `I0#` movement transition.
+- Successful focuser operation through EAFCON on a Galaxy Fold4.
 
-The Android Studio project targets Android API 35 and compiles against API 36. Developer setup and build instructions are in [README_DEV.md](README_DEV.md). The version 1.0.2 debug APK is named `EAFCON_1.0.2.apk`.
+These historical results do not replace regression testing for each release. The `:27#` STOP command is source-verified from the INDI MyFocuserPro2 driver but remains hardware-unverified on Gemini. Other MyFocuserPro2-compatible focuser models, RTS/DTR requirements on other hardware, automatic device identification, and device-maximum-changing commands are unverified. EAFCON never sends an unverified set-maximum command.
+
+## Android and builds
+
+EAFCON 1.1.1 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.1.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
+
+The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from development builds, 1.1.1 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation.
+
+## Development progress
+
+### DONE
+
+- USB serial discovery, manual selection, permission, connect, and disconnect.
+- Gemini handshake, position, movement, temperature, and device maximum display.
+- Software safety limit, absolute movement, fixed/custom relative movement, and Demo mode.
+- Persistent position presets with atomic versioned JSON import/export.
+- Fragmented/coalesced parser handling and source-backed `:27#` STOP implementation.
+- Historical physical operation with Gemini EAF.
+- API 36 target, final `dev.sphc.eafcon` application ID, and basic GitHub Actions CI.
+
+### IN PROGRESS
+
+- Google Play account/release preparation and release signing setup.
+- API 36 regression validation on Android hardware.
+- Explicit physical Gemini STOP validation.
+- Physical validation of preset and identical-VID/PID multi-device flows.
+
+### PLANNED
+
+- Broader MyFocuserPro2-compatible hardware testing.
+- Optional automatic device identification only if it can be made safe without interfering with other USB clients.
 
 ## Safety
 
-Configure the software safety maximum conservatively and keep focuser travel clear. STOP sends the halt command used by the MyFocuserPro2-compatible driver. Follow your focuser manufacturer's instructions and remain able to remove power if a physical device behaves unexpectedly.
+Configure the software safety maximum conservatively and keep focuser travel clear. STOP is not documented as an emergency stop; remain able to remove power if the hardware behaves unexpectedly.
 
 ## License
 
-No project license has been selected yet. The USB serial dependency is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+EAFCON currently has no selected project distribution license. Third-party dependency licensing is documented separately in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); `usb-serial-for-android` is MIT licensed.

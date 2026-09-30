@@ -1,4 +1,4 @@
-package com.astrophoto.geminifocuser.protocol
+package dev.sphc.eafcon.protocol
 
 /** Canonical Gemini EAF command encoder and response decoder. */
 object GeminiProtocol {

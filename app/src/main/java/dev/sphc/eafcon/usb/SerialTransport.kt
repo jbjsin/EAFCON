@@ -1,4 +1,4 @@
-package com.astrophoto.geminifocuser.usb
+package dev.sphc.eafcon.usb
 
 /** One-command-at-a-time byte transport; implementation details stay outside protocol code. */
 interface SerialTransport {

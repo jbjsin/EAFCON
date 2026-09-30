@@ -2,8 +2,8 @@
 
 ## 현재 상태와 문서 기준
 
-- EAFCON Android 앱과 Gemini focuser cartoon 런처 아이콘이 구현되었다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 앱이 만족스럽게 작동함을 확인했다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. Temurin JDK 17, Android Studio, Android SDK Platform 36, Platform Tools, Build Tools, Gradle 8.13 wrapper를 설치했다. 현재 앱 버전은 1.0.2이며 APK 이름은 `EAFCON_1.0.2.apk`다. 같은 표시 버전의 업데이트 빌드는 Android `versionCode`를 증가시킨다.
-- 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED/ASSUMED/UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
+- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 앱이 만족스럽게 작동함을 확인했다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 현재 앱 버전은 1.1.1, package/application ID는 `dev.sphc.eafcon`, `compileSdk`/`targetSdk`는 36이며 APK 이름은 `EAFCON_1.1.1.apk`다. 이전 개발 package `com.astrophoto.geminifocuser`와는 별도 Android 앱으로 설치된다.
+- 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED / SOURCE-VERIFIED·HARDWARE-UNVERIFIED / UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
 - 실제 패키지 경로와 현재 빌드 버전은 `app/` 및 `gradle/libs.versions.toml`에 고정했다. `gradlew` wrapper와 SDK 경로가 설정된 로컬 `local.properties`가 준비되어 있다. `local.properties`는 추적하지 않는다.
 - 이후 작업자는 수정 전 두 지침 파일을 읽고, 구조나 작업 흐름이 바뀌면 같은 변경에서 문서도 갱신한다.
 
@@ -45,11 +45,12 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 | `app/src/main/.../protocol/` | 정규 명령 생성, `#` 버퍼링, 응답 파싱 및 검증 |
 | `app/src/main/.../control/` | 요청 직렬화, 폴링, 소프트웨어 이동 제한, 연결/이동 상태 |
 | `app/src/main/.../ui/` | ViewModel, Compose 화면, 사용자 입력 및 오류 표시 |
+| `app/src/main/.../presets/` | 이름 있는 위치 프리셋, 검증, JSON codec 및 SharedPreferences 저장 |
 | `app/src/test/` | 순수 JVM 프로토콜 및 이동 제한 테스트 |
 | `README.md` | 공개 프로젝트 상태, 실제 구현 기능, 사용법, 한계 |
 | `README_DEV.md` | 환경 설정, 빌드/시험, 하드웨어 검증표, 문제 해결과 상세 기록 |
 
-실제 USB 구현은 `usb-serial-for-android` 3.11.0을 사용하며 라이브러리 타입은 `SerialTransport` 및 USB 패키지 내부에 한정한다. 버전 채택 근거와 라이선스 검토 상태를 `README_DEV.md`에 기록한다. 실제 기기 호환성은 아직 검증되지 않았다.
+실제 USB 구현은 `usb-serial-for-android` 3.11.0을 사용하며 라이브러리 타입은 `SerialTransport` 및 USB 패키지 내부에 한정한다. 버전 채택 근거와 라이선스 검토 상태를 `README_DEV.md`에 기록한다. Gemini 실기 동작은 기존 기록으로 검증되었으나 다른 호환 장치는 검증되지 않았다.
 
 ## 동작 및 안전 규칙
 
@@ -59,6 +60,17 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 - 절대 이동은 입력 검증 뒤 `:05<목표>#`으로 보낸다. 상대 이동 ±5/25/50/100/사용자 단계는 유효한 현재 위치에 더해 절대 목표를 만든 뒤 같은 경계 검사를 통과시킨다. 경계 밖 값은 사용자에게 알리고 보내지 않는다. 이동 중 중복 명령과 오래된 위치를 사용한 계산을 피하도록 컨트롤러에서 요청을 직렬화한다.
 - 기본 폴링 간격은 중앙 설정값으로 둔다. 연결 후 유휴 상태의 위치·이동 상태는 약 500~1000 ms, 온도는 약 5~10초, 이동 중 상태는 약 200~300 ms를 시작값으로 검토한다. 실제 장치 반응과 배터리 사용량을 보고 조정한다.
 - 타임아웃, 잘못된 응답, 부분 응답, USB 분리 및 연결 실패를 UI에 명확히 알리고 앱이 멈추지 않게 한다. 마지막 시리얼 오류를 표시한다. 디버그 로그를 넣으면 송수신 기록 크기를 제한한다.
+- 프리셋 선택은 target position 필드만 채우며 이동 명령을 실행하지 않는다. 프리셋 생성/수정과 import는 비음수 정수 및 알려진 software/device maximum을 검사한다. 실제 이동은 기존 controller 제한을 통과하는 명시적인 GO 동작에서만 발생한다.
+- USB SCAN은 열거와 표시만 한다. 후보 포트 open, 인터페이스 claim/force claim, reset, protocol probe, USB command는 금지한다. 사용자가 특정 장치를 선택하고 CONNECT를 누른 뒤에만 open/claim한다. 경로, deviceId, bus/device 번호는 임시 세션 정보이고 VID/PID는 장비 identity가 아니다.
+- 호환 장치가 하나면 자동 선택할 수 있다. 둘 이상이면 이전에 명시적으로 선택한 deviceName/path가 계속 존재할 때만 유지하며, 그렇지 않으면 선택을 비워 사용자가 직접 고르게 한다. VID/PID가 같은 CH340 장치를 첫 항목이라는 이유로 선택하지 않는다.
+- Preset JSON은 `format = EAFCon Focuser Presets`, `version = 1`로 버전 관리하며, 가져오기는 파일 전체 검증 후에만 적용한다. Merge는 동일 ID 항목을 갱신하고 새 ID는 추가하며, 이름이 같고 ID가 다른 항목은 각각 보존한다. Replace는 검증과 별도 사용자 확인 뒤 수행한다. schema 변경에는 명시적 마이그레이션을 추가한다.
+
+## 검증 상태 분류
+
+- **VERIFIED:** 실제 Gemini EAF의 CH34x 열거, Android USB Host 통신, 9600 8N1, `:02#`/`EOK#`, `:00#` 위치, `:01#` 이동 상태, `:06#` 온도, `:08#` 최대 위치, 정규 `:05<position>#` 절대 이동, 장거리 이동의 `I1#` → `I0#`, 기존 EAFCON을 통한 실제 장치 운용.
+- **SOURCE-VERIFIED / HARDWARE-UNVERIFIED ON GEMINI:** STOP/Abort `:27#`. INDI MyFocuserPro2 소스에 근거해 구현했지만 이 Gemini에서 별도 물리 정지 결과가 기록되지 않았다.
+- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 정확한 1.1.1 빌드의 실기 회귀 결과.
+- 문서와 완료 보고는 위 등급을 유지한다. 기존 Gemini 검증 기록과 현재 릴리즈의 미실행 회귀 시험을 혼동하지 않는다.
 
 ## 구현 순서와 단계별 완료 조건
 
@@ -72,7 +84,7 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 8. **통합:** 가짜 전송으로 전체 화면 흐름을 검증한 뒤 실제 USB 전송에 연결한다.
 9. **물리 검증:** Galaxy Fold4와 Gemini EAF에서 `README_DEV.md`의 체크리스트를 따라 각 명령과 작은 이동을 확인하고 결과를 기록한다.
 
-각 단계에서 변경 사항을 검토하고 해당 빌드·테스트를 실행하며 실패를 수정한 후 문서를 갱신한다. 장비가 필요한 검증을 수행할 수 없으면 결과를 `NOT YET VERIFIED`로 남기고 자동화 가능한 작업을 계속한다.
+각 단계에서 변경 사항을 검토하고 해당 빌드·테스트를 실행하며 실패를 수정한 후 문서를 갱신한다. 장비가 필요한 검증을 수행할 수 없으면 현재 빌드의 미실행 회귀 시험으로 명시하고 자동화 가능한 작업을 계속한다.
 
 ## 테스트 계획
 
@@ -89,6 +101,7 @@ Windows PowerShell에서 저장소 루트에서 실행한다. JDK 17과 Android 
 ```powershell
 .\gradlew.bat :app:assembleDebug
 .\gradlew.bat :app:testDebugUnitTest
+.\gradlew.bat :app:bundleRelease
 ```
 
 빌드 실패는 숨기지 않고 원인과 재현 명령을 기록한다. 하드웨어 검증은 별도 수동 절차다.
@@ -96,8 +109,9 @@ Windows PowerShell에서 저장소 루트에서 실행한다. JDK 17과 Android 
 ## 코딩·문서·Git 협업 규칙
 
 - Kotlin의 작은 책임 단위와 명시적 상태 모델을 사용한다. Activity/Composable에 프로토콜 파싱이나 USB I/O를 넣지 않는다. 폴링 주기, 타임아웃, 시리얼 설정은 중앙에 둔다.
-- `VERIFIED`는 실제 Gemini 장치의 송수신/물리 결과, `ASSUMED`는 구현을 위한 가정, `UNVERIFIED`는 시험 전 동작으로 구분한다. 코드 주석과 문서에서 추측을 검증 사실로 바꾸지 않는다.
+- `VERIFIED`는 실제 Gemini 장치의 송수신/물리 결과, `SOURCE-VERIFIED / HARDWARE-UNVERIFIED`는 신뢰할 수 있는 프로토콜 구현에 근거하지만 해당 Gemini에서 아직 확인하지 않은 동작, `UNVERIFIED`는 그 밖의 시험 전 동작으로 구분한다. 코드 주석과 문서에서 추측을 검증 사실로 바꾸지 않는다.
 - 새 프로토콜 동작을 추가할 때 원문 명령·응답, 시험 장치, 설정, 결과, 자동 테스트와 수동 확인 여부를 기록한다. STOP은 위 출처에 명시된 `:27#`만 사용하며 장치별 확인 상태를 구분한다. 장치 최대치 변경 명령은 검증 전까지 송신하지 않는다.
 - `README.md`의 DONE/IN PROGRESS/PLANNED는 실제 상태와 일치시킨다. `README_DEV.md`에는 환경, 사용법, USB 시험 절차, 문제 해결 및 하드웨어 체크리스트를 유지한다. 구조나 작업 규칙 변경은 이 문서에 함께 반영한다.
 - Git 초기화는 구현 시작 시 수행한다. 기능별로 작은 변경을 만들고 빌드/테스트 결과를 확인한다. 다른 작업자의 변경을 덮어쓰거나 공유 브랜치를 임의로 되돌리지 않는다. 생성 파일과 로컬 비밀/장치 로그는 추적하지 않는다.
 - 병렬 작업 시 `usb`, `protocol`, `control`, `ui`, 테스트/문서 영역으로 담당 파일을 나눈다. 공통 인터페이스와 패키지 경로를 먼저 합의하고 중앙 Gradle 설정·Manifest·README 같은 파일의 동시 편집을 피한다. 충돌 가능성이 생기면 담당자에게 변경 범위를 알리고 통합 담당자가 하나씩 반영한다.
+- Google Play 업로드마다 `versionCode`를 증가시킨다. release artifact는 AAB이며 Play App Signing을 사용한다. keystore, 비밀번호, 로컬 signing properties와 배포 secrets는 절대 저장소에 커밋하지 않는다.

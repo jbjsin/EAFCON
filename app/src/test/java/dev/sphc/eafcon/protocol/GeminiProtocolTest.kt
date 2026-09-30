@@ -1,6 +1,6 @@
-package com.astrophoto.geminifocuser.protocol
+package dev.sphc.eafcon.protocol
 
-import com.astrophoto.geminifocuser.control.MovementLimits
+import dev.sphc.eafcon.control.MovementLimits
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -38,5 +38,20 @@ class GeminiProtocolTest {
         assertThrows(IllegalArgumentException::class.java) { MovementLimits.relativeTarget(14995, 25, 15000) }
         assertThrows(IllegalArgumentException::class.java) { MovementLimits.relativeTarget(null, 25, 15000) }
         assertThrows(IllegalArgumentException::class.java) { MovementLimits.validateAbsolute(15001, 15000) }
+    }
+
+    @Test fun rejectsMalformedOrUnsupportedFrames() {
+        assertThrows(IllegalArgumentException::class.java) { GeminiProtocol.parseResponse("P7500") }
+        assertThrows(IllegalArgumentException::class.java) { GeminiProtocol.parseResponse("Pbad#") }
+        assertThrows(IllegalArgumentException::class.java) { GeminiProtocol.parseResponse("I2#") }
+        assertThrows(IllegalArgumentException::class.java) { GeminiProtocol.parseResponse("ZNaN#") }
+        assertThrows(IllegalArgumentException::class.java) { GeminiProtocol.parseResponse("X1#") }
+    }
+
+    @Test fun parserRecoversAfterOversizedFrameAndReset() {
+        val parser = DelimitedResponseParser(maxFrameLength = 4)
+        assertThrows(IllegalArgumentException::class.java) { parser.append("12345") }
+        parser.reset()
+        assertEquals(listOf("I0#"), parser.append("I0#"))
     }
 }

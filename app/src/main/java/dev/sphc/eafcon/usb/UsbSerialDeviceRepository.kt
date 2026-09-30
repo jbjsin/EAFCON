@@ -1,4 +1,4 @@
-package com.astrophoto.geminifocuser.usb
+package dev.sphc.eafcon.usb
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -14,37 +14,44 @@ import kotlin.coroutines.resume
 
 data class UsbSerialDevice(
     val usbDevice: UsbDevice,
-    val name: String,
-    val vendorId: Int,
-    val productId: Int,
-    val manufacturer: String?,
-    val product: String?,
+    val displayInfo: UsbDeviceDisplayInfo,
 ) {
-    val stableLabel: String get() = buildString {
-        append(name)
-        append(" · VID %04X PID %04X".format(vendorId, productId))
-        manufacturer?.takeIf(String::isNotBlank)?.let { append(" · ").append(it) }
-        product?.takeIf(String::isNotBlank)?.let { append(" / ").append(it) }
-    }
+    val name: String get() = displayInfo.deviceName
+    val stableLabel: String get() = displayInfo.compactLabel
 }
 
 class UsbSerialDeviceRepository(context: Context) {
     private val appContext = context.applicationContext
     private val usbManager = appContext.getSystemService(Context.USB_SERVICE) as UsbManager
 
-    fun listDevices(): List<UsbSerialDevice> = usbManager.deviceList.values
-        .filter { UsbSerialProber.getDefaultProber().probeDevice(it) != null }
-        .map { device ->
-            UsbSerialDevice(
-                usbDevice = device,
-                name = device.deviceName,
+    fun listDevices(): List<UsbSerialDevice> {
+        val prober = UsbSerialProber.getDefaultProber()
+        return usbManager.deviceList.values.mapNotNull { device ->
+            // Probing maps descriptors to a serial driver; it does not open or claim the device.
+            val driver = prober.probeDevice(device) ?: return@mapNotNull null
+            val busAndDevice = UsbDeviceDisplayInfo.parseBusAndDevice(device.deviceName)
+            val rawDriverName = driver.javaClass.simpleName.removeSuffix("SerialDriver")
+            val displayDriverName = if (rawDriverName.equals("Ch34x", ignoreCase = true)) "CH34x" else rawDriverName
+            val info = UsbDeviceDisplayInfo(
+                deviceName = device.deviceName,
+                deviceId = device.deviceId,
                 vendorId = device.vendorId,
                 productId = device.productId,
-                manufacturer = device.manufacturerName,
-                product = device.productName,
+                manufacturer = readDescriptor { device.manufacturerName },
+                product = readDescriptor { device.productName },
+                // Android may require USB permission for this descriptor. Scanning never requests it.
+                serialNumber = readDescriptor { device.serialNumber },
+                driverName = displayDriverName.takeIf(String::isNotBlank),
+                busNumber = busAndDevice?.first,
+                deviceNumber = busAndDevice?.second,
+                deviceClass = device.deviceClass,
+                deviceSubclass = device.deviceSubclass,
+                deviceProtocol = device.deviceProtocol,
+                interfaceCount = device.interfaceCount,
             )
-        }
-        .sortedBy { it.name }
+            UsbSerialDevice(device, info)
+        }.sortedBy { it.name }
+    }
 
     suspend fun requestPermission(device: UsbDevice): Boolean {
         if (usbManager.hasPermission(device)) return true
@@ -89,4 +96,7 @@ class UsbSerialDeviceRepository(context: Context) {
         val connection = usbManager.openDevice(device) ?: error("Android could not open the USB device")
         return UsbSerialPortTransport(connection, port)
     }
+
+    private inline fun readDescriptor(read: () -> String?): String? =
+        runCatching(read).getOrNull()?.takeIf(String::isNotBlank)
 }

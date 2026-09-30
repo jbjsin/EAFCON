@@ -5,15 +5,15 @@ plugins {
 }
 
 android {
-    namespace = "com.astrophoto.geminifocuser"
+    namespace = "dev.sphc.eafcon"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.astrophoto.geminifocuser"
+        applicationId = "dev.sphc.eafcon"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.2"
+        targetSdk = 36
+        versionCode = 6
+        versionName = "1.1.1"
 
     }
 
@@ -52,4 +52,5 @@ dependencies {
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
+    testImplementation(libs.json)
 }

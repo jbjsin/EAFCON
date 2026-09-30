@@ -1,4 +1,4 @@
-package com.astrophoto.geminifocuser.control
+package dev.sphc.eafcon.control
 
 /** Pure movement calculations; every returned target is inside the user safety limit. */
 object MovementLimits {

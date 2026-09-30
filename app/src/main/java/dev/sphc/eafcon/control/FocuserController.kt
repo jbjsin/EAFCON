@@ -1,8 +1,8 @@
-package com.astrophoto.geminifocuser.control
+package dev.sphc.eafcon.control
 
-import com.astrophoto.geminifocuser.protocol.GeminiProtocol
-import com.astrophoto.geminifocuser.protocol.GeminiResponse
-import com.astrophoto.geminifocuser.usb.SerialTransport
+import dev.sphc.eafcon.protocol.GeminiProtocol
+import dev.sphc.eafcon.protocol.GeminiResponse
+import dev.sphc.eafcon.usb.SerialTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -27,7 +27,12 @@ data class FocuserState(
     val lastError: String? = null,
 )
 
-class FocuserController(private val scope: CoroutineScope) {
+class FocuserController(
+    private val scope: CoroutineScope,
+    private val pollIdleMs: Long = POLL_IDLE_MS,
+    private val pollMovingMs: Long = POLL_MOVING_MS,
+    private val pollTemperatureMs: Long = POLL_TEMPERATURE_MS,
+) {
     private val mutableState = MutableStateFlow(FocuserState())
     val state: StateFlow<FocuserState> = mutableState.asStateFlow()
 
@@ -36,6 +41,10 @@ class FocuserController(private val scope: CoroutineScope) {
     private var lastTemperaturePoll = 0L
     private var commandTarget: Int? = null
     private val movementMutex = Mutex()
+
+    init {
+        require(pollIdleMs > 0 && pollMovingMs > 0 && pollTemperatureMs > 0)
+    }
 
     suspend fun connect(serialTransport: SerialTransport) {
         disconnect()
@@ -84,7 +93,9 @@ class FocuserController(private val scope: CoroutineScope) {
         val active = checkNotNull(transport)
         try {
             active.send(GeminiProtocol.STOP)
-            mutableState.value = snapshot.copy(commandPending = true, lastError = null)
+            commandTarget = null
+            // A poll may complete while send() is suspended; preserve that newer state.
+            mutableState.value = mutableState.value.copy(commandPending = true, lastError = null)
         } catch (error: Exception) {
             failAndDisconnect(error)
             throw error
@@ -96,6 +107,7 @@ class FocuserController(private val scope: CoroutineScope) {
         pollingJob = null
         val previous = transport
         transport = null
+        commandTarget = null
         if (previous != null) runCatching { previous.close() }
         mutableState.value = FocuserState()
     }
@@ -112,7 +124,7 @@ class FocuserController(private val scope: CoroutineScope) {
                     mutableState.value = mutableState.value.copy(commandPending = false)
                 } else if (current == MovementState.IDLE && mutableState.value.commandPending) {
                     refreshPosition()
-                    if (mutableState.value.currentPosition == commandTarget) {
+                    if (commandTarget == null || mutableState.value.currentPosition == commandTarget) {
                         commandTarget = null
                         mutableState.value = mutableState.value.copy(commandPending = false)
                     }
@@ -120,11 +132,11 @@ class FocuserController(private val scope: CoroutineScope) {
                     refreshPosition()
                 }
                 val now = System.currentTimeMillis()
-                if (now - lastTemperaturePoll >= POLL_TEMPERATURE_MS) {
+                if (now - lastTemperaturePoll >= pollTemperatureMs) {
                     refreshTemperature()
                     lastTemperaturePoll = now
                 }
-                delay(if (current == MovementState.MOVING || mutableState.value.commandPending) POLL_MOVING_MS else POLL_IDLE_MS)
+                delay(if (current == MovementState.MOVING || mutableState.value.commandPending) pollMovingMs else pollIdleMs)
             } catch (error: Exception) {
                 failAndDisconnect(error, cancelPolling = false)
                 return
@@ -176,6 +188,7 @@ class FocuserController(private val scope: CoroutineScope) {
         if (cancelPolling) pollingJob?.cancelAndJoin()
         pollingJob = null
         transport = null
+        commandTarget = null
         runCatching { previous?.close() }
         mutableState.value = FocuserState(lastError = error.message ?: "USB serial communication failed")
     }
