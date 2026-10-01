@@ -4,7 +4,7 @@ Read `agent.md` for the development plan, verified Gemini hardware facts, safety
 
 ## Current implementation state
 
-- EAFCON 1.1.2 uses package/application ID `dev.sphc.eafcon`, targets API 36, and includes persistent presets, SAF JSON import/export, richer USB metadata, and passive device scanning. Field testing confirmed that its detach-list fix works. Connecting Gemini physically disconnects an already attached SeRelCam relay and then both devices re-enumerate; treat this as Android host/hub topology or power behavior rather than a Scan-only failure. Gemini is the physically tested focuser and other compatible models remain unverified.
+- EAFCON 1.1.3 uses package/application ID `dev.sphc.eafcon`, targets API 36, and includes separate Connection/Control/Settings pages, a persistent top Connection/Control switcher, popup-only preset management, Light/Dark/Night Vision themes, and versioned JSON serial connection settings. Night Vision explicitly uses black/dark-burgundy Material surface containers instead of gray defaults. The connection-profile picker/import UI is not implemented. Serial changes apply only to the next explicit connection and do not establish compatibility with another protocol. Field testing confirmed that the 1.1.2 detach-list fix works; the full 1.1.3 hardware regression remains pending. Connecting Gemini physically disconnects an already attached SeRelCam relay and then both devices re-enumerate; treat this as Android host/hub topology or power behavior rather than a Scan-only failure. Gemini is the physically tested focuser and other compatible models remain unverified.
 - Keep the public README and developer instructions aligned with the code. Clearly distinguish Gemini physical testing from untested compatible devices.
 - Do not guess protocol commands. STOP may use only source-verified `:27#`; Gemini physical STOP remains hardware-unverified. Never send an unverified set-maximum command.
 
@@ -14,6 +14,7 @@ Read `agent.md` for the development plan, verified Gemini hardware facts, safety
 - Keep serial I/O outside Activities and Composables.
 - Enforce software limits before issuing any move; require a known current position for relative moves.
 - Preset selection only fills Target Position; preset import/export and CRUD never move hardware. Validate preset positions against known safety maxima.
+- Keep serial settings in the versioned JSON profile layer, validate before persistence/use, and apply only on a later explicit Connect. Do not treat baud/framing changes as support for another focuser protocol.
 - USB SCAN only enumerates and displays metadata: never open/claim candidate ports, reset devices, probe protocols, or send commands. Open/claim only after explicit user selection and CONNECT.
 - Treat USB path, deviceId, Bus/Device numbers as temporary session details, not persistent identity. Never identify hardware by VID/PID alone.
 - With multiple compatible devices, preserve a still-present explicit selection but never auto-select a new first device. Connect stays disabled until selection.

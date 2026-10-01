@@ -18,6 +18,11 @@ import dev.sphc.eafcon.presets.PositionPresetStore
 import dev.sphc.eafcon.presets.PresetFileException
 import dev.sphc.eafcon.presets.PresetJsonCodec
 import dev.sphc.eafcon.presets.PresetRules
+import dev.sphc.eafcon.settings.ConnectionProfile
+import dev.sphc.eafcon.settings.ConnectionProfileCatalog
+import dev.sphc.eafcon.settings.ConnectionProfileRules
+import dev.sphc.eafcon.settings.ConnectionProfileStore
+import dev.sphc.eafcon.settings.SerialParameters
 import dev.sphc.eafcon.usb.UsbSerialDevice
 import dev.sphc.eafcon.usb.UsbSerialDeviceRepository
 import dev.sphc.eafcon.usb.FakeSerialTransport
@@ -48,18 +53,24 @@ data class FocuserUiState(
     val message: String? = null,
     val presets: List<PositionPreset> = emptyList(),
     val pendingImportPresets: List<PositionPreset>? = null,
+    val connectionProfile: ConnectionProfile,
 )
 
 class FocuserViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = UsbSerialDeviceRepository(application)
     private val presetStore = PositionPresetStore(application)
+    private val connectionProfileStore = ConnectionProfileStore(application)
+    private var connectionProfileCatalog: ConnectionProfileCatalog = connectionProfileStore.load()
     // Keep polling bound to ViewModel lifetime while allowing onCleared() to join it without
     // blocking the Main dispatcher that normally backs viewModelScope.
     private val controller = FocuserController(
         CoroutineScope(viewModelScope.coroutineContext + Dispatchers.IO),
     )
     private val mutableState = MutableStateFlow(
-        FocuserUiState(presets = runCatching { presetStore.load() }.getOrDefault(emptyList())),
+        FocuserUiState(
+            presets = runCatching { presetStore.load() }.getOrDefault(emptyList()),
+            connectionProfile = connectionProfileCatalog.defaultProfile(),
+        ),
     )
     val state: StateFlow<FocuserUiState> = mutableState.asStateFlow()
     private var connectedDeviceId: Int? = null
@@ -188,7 +199,10 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val permitted = repository.requestPermission(selected.usbDevice)
                 check(permitted) { "USB permission was denied" }
-                val transport = withContext(Dispatchers.IO) { repository.open(selected.usbDevice) }
+                val serialParameters = mutableState.value.connectionProfile.serial
+                val transport = withContext(Dispatchers.IO) {
+                    repository.open(selected.usbDevice, serialParameters)
+                }
                 controller.connect(transport)
                 connectedDeviceId = selected.usbDevice.deviceId
                 mutableState.update { it.copy(demoMode = false, message = "Connected to ${selected.name}") }
@@ -225,6 +239,60 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
             controller.disconnect()
             connectedDeviceId = null
             mutableState.update { it.copy(demoMode = false, message = "Disconnected") }
+        }
+    }
+
+    fun saveConnectionSettings(parameters: SerialParameters): String? {
+        if (mutableState.value.focuser.connected) {
+            val message = "Disconnect before changing serial settings"
+            mutableState.update { it.copy(message = message) }
+            return message
+        }
+        val result = runCatching {
+            ConnectionProfileRules.validate(parameters)
+            val current = mutableState.value.connectionProfile
+            val updatedProfile = current.copy(serial = parameters)
+            val updatedCatalog = connectionProfileCatalog.copy(
+                profiles = connectionProfileCatalog.profiles.map {
+                    if (it.id == current.id) updatedProfile else it
+                },
+            )
+            ConnectionProfileRules.validate(updatedCatalog)
+            connectionProfileStore.save(updatedCatalog)
+            connectionProfileCatalog = updatedCatalog
+            mutableState.update {
+                it.copy(
+                    connectionProfile = updatedProfile,
+                    message = "Serial settings saved; they apply to the next connection",
+                )
+            }
+        }
+        return result.fold(
+            onSuccess = { null },
+            onFailure = { error ->
+                val message = error.message ?: "Unable to save serial settings"
+                mutableState.update { it.copy(message = message) }
+                message
+            },
+        )
+    }
+
+    fun resetConnectionSettings() {
+        if (mutableState.value.focuser.connected) {
+            mutableState.update { it.copy(message = "Disconnect before resetting serial settings") }
+            return
+        }
+        runCatching {
+            val defaults = connectionProfileStore.reset()
+            connectionProfileCatalog = defaults
+            mutableState.update {
+                it.copy(
+                    connectionProfile = defaults.defaultProfile(),
+                    message = "Bundled serial defaults restored",
+                )
+            }
+        }.onFailure { error ->
+            mutableState.update { it.copy(message = error.message ?: "Unable to restore serial defaults") }
         }
     }
 

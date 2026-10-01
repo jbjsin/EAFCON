@@ -9,6 +9,7 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import com.hoho.android.usbserial.driver.UsbSerialProber
+import dev.sphc.eafcon.settings.SerialParameters
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -89,13 +90,13 @@ class UsbSerialDeviceRepository(context: Context) {
         }
     }
 
-    fun open(device: UsbDevice): SerialTransport {
+    fun open(device: UsbDevice, parameters: SerialParameters): SerialTransport {
         check(usbManager.hasPermission(device)) { "USB permission has not been granted" }
         val driver = UsbSerialProber.getDefaultProber().probeDevice(device)
             ?: error("No supported USB serial driver was found")
         val port = driver.ports.firstOrNull() ?: error("USB serial device has no ports")
         val connection = usbManager.openDevice(device) ?: error("Android could not open the USB device")
-        return UsbSerialPortTransport(connection, port)
+        return UsbSerialPortTransport(connection, port, parameters)
     }
 
     private inline fun readDescriptor(read: () -> String?): String? =

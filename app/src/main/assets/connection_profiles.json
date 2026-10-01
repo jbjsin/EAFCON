@@ -1,0 +1,21 @@
+{
+  "format": "EAFCon Connection Profiles",
+  "version": 1,
+  "defaultProfileId": "gemini-myfocuserpro2",
+  "profiles": [
+    {
+      "id": "gemini-myfocuserpro2",
+      "name": "Gemini / MyFocuserPro2",
+      "serial": {
+        "baudRate": 9600,
+        "dataBits": 8,
+        "stopBits": "ONE",
+        "parity": "NONE",
+        "flowControl": "NONE",
+        "readTimeoutMs": 250,
+        "writeTimeoutMs": 1000,
+        "responseTimeoutMs": 3000
+      }
+    }
+  ]
+}

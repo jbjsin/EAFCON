@@ -4,16 +4,16 @@
 
 Use Android Studio with JDK 17, Android SDK Platform 36, and the Gradle/Android Gradle Plugin versions pinned by the repository. The local SDK path belongs in ignored `local.properties`.
 
-EAFCON 1.1.2 uses:
+EAFCON 1.1.3 uses:
 
 - Namespace and application ID: `dev.sphc.eafcon`
 - `minSdk = 26`
 - `compileSdk = 36`
 - `targetSdk = 36`
-- `versionCode = 7`
-- `versionName = 1.1.2`
+- `versionCode = 8`
+- `versionName = 1.1.3`
 
-The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.2 as a separate application rather than an in-place update of those builds. It updates 1.1.1 when both APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
+The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.3 as a separate application rather than an in-place update of those builds. It updates 1.1.1 and 1.1.2 when the APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
 
 The project uses Kotlin, Jetpack Compose, AndroidX Lifecycle, Coroutines, and `usb-serial-for-android` 3.11.0. The serial dependency is published through JitPack, supports CH340/CH341 devices, and is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -27,7 +27,7 @@ From PowerShell at the repository root:
 .\gradlew.bat :app:bundleRelease
 ```
 
-Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.2.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
+Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.3.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
 
 - A debug APK is signed with the local Android debug key and is intended for development/testing.
 - A release APK is an installable release-mode package, but this project does not currently define a production signing configuration.
@@ -54,7 +54,41 @@ The established boundaries remain:
 
 `Android USB discovery/permission → SerialTransport → GeminiProtocol → FocuserController → ViewModel → Compose UI`
 
-`usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `protocol/` owns canonical commands and `#`-terminated parsing without Android dependencies. `control/` owns polling, trusted state, serialization, and movement safety. `presets/` owns the portable model, validation, versioned JSON, and SharedPreferences persistence. `ui/` owns ViewModel orchestration and Compose rendering.
+`usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `protocol/` owns canonical commands and `#`-terminated parsing without Android dependencies. `control/` owns polling, trusted state, serialization, and movement safety. `presets/` owns the portable position model, validation, versioned JSON, and SharedPreferences persistence. `settings/` owns serial profile models, validation, versioned JSON, bundled defaults, and private persistence. `ui/` owns ViewModel orchestration, navigation, themes, and Compose rendering.
+
+The Compose UI has separate Connection, Control, and Settings pages. Connection and Control are always available from a persistent top switcher; all three pages remain available from the top-right menu. A compact connection indicator remains outside page scrolling and also shows position, temperature, and movement state so short screens retain essential telemetry while the movement controls are visible. Theme selection cycles among Light, low-glare Dark, and red-only Night Vision and is stored privately. The Night Vision color scheme explicitly defines every Material surface-container role as black or dark burgundy so cards and disabled controls never fall back to gray. Position presets appear only in a dialog: Load fills Target Position; Save has explicit New/Create and Edit/Update states.
+
+## Serial connection profiles
+
+The app loads `app/src/main/assets/connection_profiles.json` through `ConnectionProfileStore`. User changes are validated, encoded with the same schema, and stored in private SharedPreferences as `connection_profiles_v1`. Invalid stored JSON falls back to the bundled asset. Settings cannot be changed while connected and are passed to `UsbSerialPortTransport` on the next explicit Connect.
+
+Format version 1 is:
+
+```json
+{
+  "format": "EAFCon Connection Profiles",
+  "version": 1,
+  "defaultProfileId": "gemini-myfocuserpro2",
+  "profiles": [
+    {
+      "id": "gemini-myfocuserpro2",
+      "name": "Gemini / MyFocuserPro2",
+      "serial": {
+        "baudRate": 9600,
+        "dataBits": 8,
+        "stopBits": "ONE",
+        "parity": "NONE",
+        "flowControl": "NONE",
+        "readTimeoutMs": 250,
+        "writeTimeoutMs": 1000,
+        "responseTimeoutMs": 3000
+      }
+    }
+  ]
+}
+```
+
+The schema already supports multiple profiles, but profile selection/import is intentionally not exposed in this UI revision. Only serial transport parameters are configurable. Protocol commands and response parsing remain MyFocuserPro2-specific, so changing baud rate or framing does not establish compatibility with a different focuser protocol.
 
 ## API 36 and lifecycle review
 
@@ -102,13 +136,13 @@ The field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconn
 
 ## Serial and controller review
 
-`UsbSerialPortTransport` serializes send/exchange/close with one mutex. It accepts fragmented frames and finds the expected response among coalesced frames. The parser is reset on open, close, and before a new exchange so a partial frame left by a timed-out request cannot contaminate the next command. Android integration testing remains necessary for late physical responses and USB removal during a read.
+`UsbSerialPortTransport` serializes send/exchange/close with one mutex. It accepts validated serial parameters from the active JSON profile, accepts fragmented frames, and finds the expected response among coalesced frames. The parser is reset on open, close, and before a new exchange so a partial frame left by a timed-out request cannot contaminate the next command. Android integration testing remains necessary for alternate serial settings, late physical responses, and USB removal during a read.
 
 `FocuserController` keeps movement/STOP requests behind a movement mutex while the transport serializes them against polling. STOP clears the abandoned move target and updates `commandPending` from the latest state after its suspending send, avoiding an older snapshot overwriting a newer polling result. Tests cover connection, handshake failure, movement lifecycle, final position refresh, limit rejection, disconnect/error state, and STOP through the fake transport.
 
 ## Verified local build result
 
-On 2026-09-30, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleRelease` completed successfully with JDK 17 and Android SDK 36. All 31 JVM tests passed. The generated debug APK metadata reports `dev.sphc.eafcon`, version code 7, and version name 1.1.2. The generated release AAB remains intentionally unsigned because production upload signing is not configured.
+On 2026-10-01, after the UI and serial-profile changes, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleRelease` completed successfully with JDK 17 and Android SDK 36; release lint also passed. All 35 JVM tests passed. Release build metadata is `dev.sphc.eafcon`, version code 8, and version name 1.1.3. Production upload signing remains intentionally unconfigured.
 
 ## Verification model
 
@@ -135,13 +169,13 @@ On 2026-09-30, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleR
 - RTS/DTR requirements on other hardware.
 - Safe automatic Gemini identification.
 - Commands that change device maximum; EAFCON does not send one.
-- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.2 Android build.
+- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.3 Android build.
 - Whether a sufficiently powered hub, separate Gemini power applied before USB, or a different hub/cable prevents the whole-bus reset during Gemini insertion.
-- Preset behavior on the exact 1.1.2 Android build until manually tested.
+- Preset behavior on the exact 1.1.3 Android build until manually tested.
 
-Historical verification does not mean the exact 1.1.2 build has completed regression testing.
+Historical verification does not mean the exact 1.1.3 build has completed regression testing.
 
-## 1.1.2 hardware regression checklist
+## 1.1.3 hardware regression checklist
 
 - [ ] Detect the Gemini CH34x and distinguish it from another matching VID/PID device.
 - [ ] Grant USB permission and connect at 9600 8N1.
@@ -160,6 +194,9 @@ Historical verification does not mean the exact 1.1.2 build has completed regres
 - [ ] Repeat with SvBony USB camera software and USB Serial Terminal installed/running as in the reported setup.
 - [ ] Repeat Gemini insertion with a powered hub and Gemini external power already stable; note whether USB Serial Terminal keeps its relay handle.
 - [ ] Connect both peripherals to the powered hub before attaching the hub upstream to Android and compare the result with hot-plugging Gemini.
+- [ ] Verify Connection/Control top switching and the compact position/temperature/movement indicator on a short display.
+- [ ] Verify Light, Dark, and Night Vision themes; confirm Night Vision has no unintended gray Material surfaces.
+- [ ] Change serial settings while disconnected, reconnect, then restore the bundled 9600 8N1 defaults.
 
 ## Continuous integration
 

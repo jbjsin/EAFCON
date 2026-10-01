@@ -3,17 +3,31 @@ package dev.sphc.eafcon
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import dev.sphc.eafcon.ui.EafconTheme
 import dev.sphc.eafcon.ui.FocuserScreen
+import dev.sphc.eafcon.ui.ThemePreferenceStore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            val themeStore = remember { ThemePreferenceStore(this) }
+            var themeMode by rememberSaveable { mutableStateOf(themeStore.load()) }
+            EafconTheme(themeMode) {
                 Surface {
-                    FocuserScreen()
+                    FocuserScreen(
+                        themeMode = themeMode,
+                        onThemeModeChange = { selected ->
+                            themeMode = selected
+                            themeStore.save(selected)
+                        },
+                    )
                 }
             }
         }

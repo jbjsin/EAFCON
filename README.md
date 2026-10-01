@@ -11,7 +11,10 @@ EAFCON is an Android USB serial controller for manual electronic focuser operati
 - Current position, movement state, temperature, and device-reported maximum display.
 - User-configured software safety maximum enforced before movement.
 - Absolute movement, ±5/±25/±50/±100 relative movement, and custom relative steps.
-- Named position presets with persistent storage and portable JSON import/export through Android's file picker.
+- Separate Connection and Control pages available from a persistent top switcher, plus Connection/Control/Settings navigation in the top-right menu and a connection indicator on every page.
+- Light, low-glare dark, and red-only night-vision themes.
+- Named position presets in a dedicated dialog, with distinct Load, Create, and Edit flows plus portable JSON import/export through Android's file picker.
+- Editable baud rate, data bits, stop bits, parity, flow control, and timeout values loaded from a versioned JSON connection profile.
 - Demo mode for exercising the UI without hardware.
 - STOP button while moving. STOP uses the source-backed MyFocuserPro2 `:27#` abort command; physical STOP behavior on the Gemini EAF remains to be explicitly verified.
 - Parser support for fragmented and coalesced `#`-terminated serial responses.
@@ -21,11 +24,13 @@ EAFCON is an Android USB serial controller for manual electronic focuser operati
 1. Connect the focuser to an Android device with USB Host support, using an OTG adapter or powered hub as needed.
 2. Open EAFCON and tap **Scan**. When multiple compatible serial devices are present, select the intended device explicitly; VID/PID alone does not identify a Gemini Focuser.
 3. Tap **Connect** and grant Android USB permission.
-4. Set a conservative software safety maximum within the focuser's mechanical travel.
-5. Enter a target or use a relative control. Movement occurs only after an explicit GO or relative-move action.
-6. Tap **Disconnect** when finished.
+4. Open **Control** from the top-right menu and set a conservative software safety maximum within the focuser's mechanical travel.
+5. Enter a target or use a relative control. Custom steps use the centered step value with the adjacent −/+ movement buttons.
+6. Tap **Disconnect** on the Connection page when finished.
 
 Preset selection only fills **Target Position**. Preset CRUD and JSON import/export never move hardware. Import validates the complete file before offering Merge or confirmed Replace.
+
+The Settings page edits the active serial profile and applies it only to the next connection. The bundled `Gemini / MyFocuserPro2` profile contains the verified 9600 8N1 settings. Connection profile selection/import is not exposed yet; the underlying versioned JSON catalog is present for future model expansion. Changing serial parameters does not add another focuser protocol, so compatibility beyond MyFocuserPro2 remains unverified.
 
 USB **Scan** only enumerates serial-capable devices and reads available metadata. It does not open or claim ports, reset devices, probe protocols, or send commands. Device path, deviceId, and Bus/Device values help distinguish devices only during the current Android USB enumeration and are not persistent hardware identities.
 
@@ -42,9 +47,9 @@ These historical results do not replace regression testing for each release. The
 
 ## Android and builds
 
-EAFCON 1.1.2 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.2.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
+EAFCON 1.1.3 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.3.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
 
-The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.2 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1, when signed with the same key.
+The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.3 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1 and 1.1.2, when signed with the same key.
 
 ## Development progress
 
@@ -54,6 +59,8 @@ The Google Play listing is not published yet. The final application ID has been 
 - Gemini handshake, position, movement, temperature, and device maximum display.
 - Software safety limit, absolute movement, fixed/custom relative movement, and Demo mode.
 - Persistent position presets with atomic versioned JSON import/export.
+- Connection/Control/Settings navigation, popup-only preset management, and persistent Light/Dark/Night Vision themes.
+- Versioned JSON serial settings with editable connection parameters and a bundled Gemini default profile.
 - Fragmented/coalesced parser handling and source-backed `:27#` STOP implementation.
 - Historical physical operation with Gemini EAF.
 - API 36 target, final `dev.sphc.eafcon` application ID, and basic GitHub Actions CI.
@@ -70,6 +77,8 @@ The Google Play listing is not published yet. The final application ID has been 
 
 - Broader MyFocuserPro2-compatible hardware testing.
 - Optional automatic device identification only if it can be made safe without interfering with other USB clients.
+- Research a safe, source-verified way to change the focuser's internally reported current-position value. No command is selected or implemented yet.
+- Explore grouped presets with a shared reference position and per-item increments/decrements; the interaction and storage model are not yet decided.
 
 ## Safety
 
