@@ -2,7 +2,7 @@
 
 ## 현재 상태와 문서 기준
 
-- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 1.1.3은 Connection/Control/Settings 화면 분리, 항상 보이는 Connection/Control 상단 전환부와 스크롤 밖의 연결·위치·온도·이동 상태 표시, 팝업 전용 프리셋 관리, Light/Dark/Night Vision 테마, 버전형 JSON 직렬 연결 설정을 포함한다. Night Vision은 Material의 전체 surface-container 계열을 검정/검붉은색으로 지정해 회색 기본 표면이 나타나지 않게 한다. 연결 프로필 선택 UI는 아직 없으며 번들 기본 프로필과 사용자가 편집한 활성 프로필만 사용한다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 기존 앱이 만족스럽게 작동함을 확인했지만 1.1.3의 전체 실기 회귀 시험은 아직 남아 있다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 빌드 메타데이터는 1.1.3, package/application ID는 `dev.sphc.eafcon`, `compileSdk`/`targetSdk`는 36이며 APK 이름은 `EAFCON_1.1.3.apk`다. 이전 개발 package `com.astrophoto.geminifocuser`와는 별도 Android 앱으로 설치된다.
+- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 1.1.4는 Connection/Control/Settings 화면 분리, 항상 보이는 Connection/Control 상단 전환부와 스크롤 밖의 연결·위치·온도·이동 상태 표시, 팝업 전용 프리셋 관리, Light/Dark/Night Vision 테마, 버전형 JSON 직렬 연결 설정, 설정 화면의 영문/한글 선택과 이동 중 진동을 포함한다. 설정 화면은 인터페이스·이동 진동·시리얼 연결·호환성 카드로 나뉜다. 이동 진동은 기본 Off/3단계이며 1–5단계가 Android 최대 진폭의 10/30/50/70/90%를 사용한다. 단계 선택 때 120ms 확인 진동을 내고, 앱이 포그라운드이며 상태가 `MOVING`인 동안만 반복되며 정지·연결 해제·백그라운드 전환 때 취소된다. 앱 언어는 기본 영문이며 사용자가 고른 값은 로컬에 저장되고 Activity의 지역화된 리소스 구성에 적용된다. Night Vision은 Material의 전체 surface-container 계열을 검정/검붉은색으로 지정해 회색 기본 표면이 나타나지 않게 한다. 연결 프로필 선택 UI는 아직 없으며 번들 기본 프로필과 사용자가 편집한 활성 프로필만 사용한다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 기존 앱이 만족스럽게 작동함을 확인했지만 1.1.4의 전체 실기 회귀 시험은 아직 남아 있다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 빌드 메타데이터는 1.1.4, package/application ID는 `dev.sphc.eafcon`, `compileSdk`/`targetSdk`는 36이며 APK 이름은 `EAFCON_1.1.4.apk`다. 이전 개발 package `com.astrophoto.geminifocuser`와는 별도 Android 앱으로 설치된다.
 - 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED / SOURCE-VERIFIED·HARDWARE-UNVERIFIED / UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
 - 실제 패키지 경로와 현재 빌드 버전은 `app/` 및 `gradle/libs.versions.toml`에 고정했다. `gradlew` wrapper와 SDK 경로가 설정된 로컬 `local.properties`가 준비되어 있다. `local.properties`는 추적하지 않는다.
 - 이후 작업자는 수정 전 두 지침 파일을 읽고, 구조나 작업 흐름이 바뀌면 같은 변경에서 문서도 갱신한다.
@@ -63,6 +63,9 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 - 타임아웃, 잘못된 응답, 부분 응답, USB 분리 및 연결 실패를 UI에 명확히 알리고 앱이 멈추지 않게 한다. 마지막 시리얼 오류를 표시한다. 디버그 로그를 넣으면 송수신 기록 크기를 제한한다.
 - 프리셋 선택은 target position 필드만 채우며 이동 명령을 실행하지 않는다. 프리셋 생성/수정과 import는 비음수 정수 및 알려진 software/device maximum을 검사한다. 실제 이동은 기존 controller 제한을 통과하는 명시적인 GO 동작에서만 발생한다.
 - 직렬 설정은 버전형 JSON 프로필에서 읽고 검증한 뒤 다음 명시적 CONNECT 때 전송 계층에 적용한다. 연결 중에는 변경/초기화를 허용하지 않는다. 프로필 JSON은 직렬 파라미터만 포함하며 프로토콜 명령을 외부 설정으로 추측하거나 대체하지 않는다. baud/framing 변경만으로 다른 포커서 프로토콜 호환을 주장하지 않는다.
+- 앱 언어는 UI 리소스와 UI 경계의 상태 메시지 변환으로 처리하고 프로토콜·USB·컨트롤러 계층에 현지화 의존성을 넣지 않는다. 장치 문자열, 사용자 프리셋명, 번역되지 않은 기술 오류 원문은 변형하지 않는다.
+- 이동 진동은 UI 생명주기 효과로만 처리한다. `MOVING`과 포그라운드 조건을 모두 만족할 때만 반복하고 `IDLE`/`UNKNOWN`, 연결 해제, 설정 Off, Activity pause/stop/destroy 때 즉시 cancel한다. 강도 1–5는 최대 진폭의 10/30/50/70/90%이며 선택 시 짧은 확인 진동을 낸다. 기존 Low/Medium/High 저장값은 2/3/5단계로 변환한다. 진동 설정은 직렬 프로필과 분리해 저장하며 장치 명령이나 폴링 주기를 바꾸지 않는다.
+- Connection/Control은 기본 화면으로, Settings와 이후 추가될 햄버거 메뉴 목적지는 보조 화면으로 취급한다. 보조 화면에서 Android Back을 누르면 Activity를 종료하지 않고 그 화면에 들어가기 직전의 Connection/Control로 돌아간다.
 - USB SCAN은 열거와 표시만 한다. 후보 포트 open, 인터페이스 claim/force claim, reset, protocol probe, USB command는 금지한다. 사용자가 특정 장치를 선택하고 CONNECT를 누른 뒤에만 open/claim한다. 경로, deviceId, bus/device 번호는 임시 세션 정보이고 VID/PID는 장비 identity가 아니다.
 - 호환 장치가 하나면 자동 선택할 수 있다. 둘 이상이면 이전에 명시적으로 선택한 deviceName/path가 계속 존재할 때만 유지하며, 그렇지 않으면 선택을 비워 사용자가 직접 고르게 한다. VID/PID가 같은 CH340 장치를 첫 항목이라는 이유로 선택하지 않는다.
 - 1.1.1 실기 시험에서 Gemini와 SeRelCam용 CH340 릴레이를 동시에 연결하고 EAFCON은 미접속인 상태에서 릴레이 분리/재연결은 해당 항목만 정상 변경되었으나, Gemini를 분리하면 전체 스캔 목록이 사라지는 현상이 확인되었다. 시험 Android에는 SvBony USB 카메라 앱과 USB Serial Terminal도 설치되어 있었다. 1.1.2는 장치별 probe 실패를 격리하고, 분리 항목만 즉시 제거하며, 중복 스캔 취소와 USB 목록 안정화 지연/빈 목록 재시도를 적용했고 Gemini를 뽑는 경우는 정상화되었다. 이후 확인 결과 Gemini를 연결하는 순간 기존 릴레이의 실제 USB 연결도 끊어지고 두 장치가 함께 다시 열거된다. 목록은 자동 복구되므로 이는 Scan 결과만의 문제가 아니라 Android 호스트/허브 토폴로지 또는 전원 계층의 버스 리셋 현상이다. 앱은 다른 프로그램의 열린 릴레이 연결을 버스 리셋 너머로 유지할 수 없으며, 두 CH340 장치가 같은 VID/PID를 사용하고 경로도 재할당될 수 있으므로 자동 재연결도 안전하지 않다.
@@ -72,7 +75,7 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 
 - **VERIFIED:** 실제 Gemini EAF의 CH34x 열거, Android USB Host 통신, 9600 8N1, `:02#`/`EOK#`, `:00#` 위치, `:01#` 이동 상태, `:06#` 온도, `:08#` 최대 위치, 정규 `:05<position>#` 절대 이동, 장거리 이동의 `I1#` → `I0#`, 기존 EAFCON을 통한 실제 장치 운용.
 - **SOURCE-VERIFIED / HARDWARE-UNVERIFIED ON GEMINI:** STOP/Abort `:27#`. INDI MyFocuserPro2 소스에 근거해 구현했지만 이 Gemini에서 별도 물리 정지 결과가 기록되지 않았다.
-- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 포커서 내부의 현재 위치 표현값을 안전하게 변경하는 명령/동작, powered hub/별도 전원 구성에서 Gemini hot-plug가 릴레이 연결을 유지하는지 여부, 전체 1.1.3 실기 회귀 결과.
+- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 포커서 내부의 현재 위치 표현값을 안전하게 변경하는 명령/동작, powered hub/별도 전원 구성에서 Gemini hot-plug가 릴레이 연결을 유지하는지 여부, 전체 1.1.4 실기 회귀 결과.
 
 ## 후속 검토 아이디어
 

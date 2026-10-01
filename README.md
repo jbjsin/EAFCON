@@ -12,7 +12,10 @@ EAFCON is an Android USB serial controller for manual electronic focuser operati
 - User-configured software safety maximum enforced before movement.
 - Absolute movement, ±5/±25/±50/±100 relative movement, and custom relative steps.
 - Separate Connection and Control pages available from a persistent top switcher, plus Connection/Control/Settings navigation in the top-right menu and a connection indicator on every page.
+- Android Back returns from Settings and future secondary menu pages to the Connection/Control page used immediately before entering the menu, instead of closing EAFCON.
 - Light, low-glare dark, and red-only night-vision themes.
+- In-app English/Korean language selection, saved across launches and applied to navigation, controls, dialogs, guidance, and common operation messages.
+- Optional foreground vibration while the focuser reports MOVING, with persistent five-level strength selection at 10/30/50/70/90% of Android's maximum amplitude. Selecting a level gives a short preview pulse; movement vibration cancels when movement ends, USB disconnects, or EAFCON leaves the foreground.
 - Named position presets in a dedicated dialog, with distinct Load, Create, and Edit flows plus portable JSON import/export through Android's file picker.
 - Editable baud rate, data bits, stop bits, parity, flow control, and timeout values loaded from a versioned JSON connection profile.
 - Demo mode for exercising the UI without hardware.
@@ -47,9 +50,9 @@ These historical results do not replace regression testing for each release. The
 
 ## Android and builds
 
-EAFCON 1.1.3 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.3.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
+EAFCON 1.1.4 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.4.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
 
-The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.3 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1 and 1.1.2, when signed with the same key.
+The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.4 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1 through 1.1.3, when signed with the same key.
 
 ## Development progress
 
@@ -60,6 +63,8 @@ The Google Play listing is not published yet. The final application ID has been 
 - Software safety limit, absolute movement, fixed/custom relative movement, and Demo mode.
 - Persistent position presets with atomic versioned JSON import/export.
 - Connection/Control/Settings navigation, popup-only preset management, and persistent Light/Dark/Night Vision themes.
+- Persistent English/Korean interface selection on the Settings page.
+- Card-grouped Settings sections for interface, movement vibration, serial connection, and compatibility guidance.
 - Versioned JSON serial settings with editable connection parameters and a bundled Gemini default profile.
 - Fragmented/coalesced parser handling and source-backed `:27#` STOP implementation.
 - Historical physical operation with Gemini EAF.

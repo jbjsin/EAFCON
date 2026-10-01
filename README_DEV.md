@@ -4,16 +4,16 @@
 
 Use Android Studio with JDK 17, Android SDK Platform 36, and the Gradle/Android Gradle Plugin versions pinned by the repository. The local SDK path belongs in ignored `local.properties`.
 
-EAFCON 1.1.3 uses:
+EAFCON 1.1.4 uses:
 
 - Namespace and application ID: `dev.sphc.eafcon`
 - `minSdk = 26`
 - `compileSdk = 36`
 - `targetSdk = 36`
-- `versionCode = 8`
-- `versionName = 1.1.3`
+- `versionCode = 9`
+- `versionName = 1.1.4`
 
-The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.3 as a separate application rather than an in-place update of those builds. It updates 1.1.1 and 1.1.2 when the APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
+The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.4 as a separate application rather than an in-place update of those builds. It updates 1.1.1 through 1.1.3 when the APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
 
 The project uses Kotlin, Jetpack Compose, AndroidX Lifecycle, Coroutines, and `usb-serial-for-android` 3.11.0. The serial dependency is published through JitPack, supports CH340/CH341 devices, and is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -27,7 +27,7 @@ From PowerShell at the repository root:
 .\gradlew.bat :app:bundleRelease
 ```
 
-Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.3.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
+Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.4.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
 
 - A debug APK is signed with the local Android debug key and is intended for development/testing.
 - A release APK is an installable release-mode package, but this project does not currently define a production signing configuration.
@@ -56,7 +56,11 @@ The established boundaries remain:
 
 `usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `protocol/` owns canonical commands and `#`-terminated parsing without Android dependencies. `control/` owns polling, trusted state, serialization, and movement safety. `presets/` owns the portable position model, validation, versioned JSON, and SharedPreferences persistence. `settings/` owns serial profile models, validation, versioned JSON, bundled defaults, and private persistence. `ui/` owns ViewModel orchestration, navigation, themes, and Compose rendering.
 
-The Compose UI has separate Connection, Control, and Settings pages. Connection and Control are always available from a persistent top switcher; all three pages remain available from the top-right menu. A compact connection indicator remains outside page scrolling and also shows position, temperature, and movement state so short screens retain essential telemetry while the movement controls are visible. Theme selection cycles among Light, low-glare Dark, and red-only Night Vision and is stored privately. The Night Vision color scheme explicitly defines every Material surface-container role as black or dark burgundy so cards and disabled controls never fall back to gray. Position presets appear only in a dialog: Load fills Target Position; Save has explicit New/Create and Edit/Update states.
+The Compose UI has separate Connection, Control, and Settings pages. Connection and Control are primary pages always available from a persistent top switcher; all pages remain available from the top-right menu. Secondary menu pages retain the primary page that was active when entered. Android Back on a secondary page returns to that Connection/Control page rather than finishing the Activity, providing the same behavior for future secondary menu destinations. A compact connection indicator remains outside page scrolling and also shows position, temperature, and movement state so short screens retain essential telemetry while the movement controls are visible. Theme selection cycles among Light, low-glare Dark, and red-only Night Vision and is stored privately. The Night Vision color scheme explicitly defines every Material surface-container role as black or dark burgundy so cards and disabled controls never fall back to gray. Position presets appear only in a dialog: Load fills Target Position; Save has explicit New/Create and Edit/Update states.
+
+The Settings page also provides persistent English/Korean selection. English remains the default for existing and fresh installations until the user explicitly selects Korean. `LanguagePreferenceStore` keeps only the language enum; `MainActivity.attachBaseContext()` applies its locale to a copied Android `Configuration`, and selecting another language recreates the Activity so resource-backed Compose text changes immediately. User data, USB metadata, preset names, and unknown technical errors are preserved verbatim. Common operation messages are localized at the UI boundary, while protocol and controller layers remain language-independent. App Bundle language splitting is disabled so both languages remain installed and the in-app switch never depends on a later Play language-pack download.
+
+Settings are grouped into separate Interface, Movement vibration, Serial connection, and Compatibility cards. Movement vibration is disabled by default at level 3 and stored independently from serial profiles. While the Activity is resumed and the controller reports `MOVING`, `MovementVibrationEffect` requests a 180 ms pulse followed by an 820 ms gap. Levels 1–5 use 10/30/50/70/90% of Android's 255 maximum amplitude, which rounds to 26/77/128/179/230. Selecting any level requests a 120 ms preview pulse even when movement vibration is disabled; if movement vibration is active during a move, the repeating pattern continues at the selected level. Stored legacy Low/Medium/High values migrate to levels 2/3/5. Devices without amplitude control may not produce visibly different levels. The effect cancels vibration on `IDLE`, disconnect/unknown movement, disable, Activity pause/stop/destroy, or disposal. `android.permission.VIBRATE` is a normal permission and requires no runtime permission dialog.
 
 ## Serial connection profiles
 
@@ -142,7 +146,7 @@ The field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconn
 
 ## Verified local build result
 
-On 2026-10-01, after the UI and serial-profile changes, `:app:testDebugUnitTest`, `:app:assembleDebug`, and `:app:bundleRelease` completed successfully with JDK 17 and Android SDK 36; release lint also passed. All 35 JVM tests passed. Release build metadata is `dev.sphc.eafcon`, version code 8, and version name 1.1.3. Production upload signing remains intentionally unconfigured.
+On 2026-10-01, after the language, card-grouped Settings, five-level movement vibration, and secondary-page Back navigation changes, `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:bundleRelease`, and `:app:lintDebug` completed successfully with JDK 17 and Android SDK 36; release lint-vital also passed. All 44 JVM tests passed, including four primary/secondary navigation cases and five vibration-level/migration/effect-key cases. Release build metadata is `dev.sphc.eafcon`, version code 9, and version name 1.1.4. Production upload signing remains intentionally unconfigured. Preview/continuous vibration timing, hardware amplitude differences, lifecycle cancellation, and physical Android Back-key behavior still require on-device regression testing.
 
 ## Verification model
 
@@ -169,13 +173,13 @@ On 2026-10-01, after the UI and serial-profile changes, `:app:testDebugUnitTest`
 - RTS/DTR requirements on other hardware.
 - Safe automatic Gemini identification.
 - Commands that change device maximum; EAFCON does not send one.
-- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.3 Android build.
+- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.4 Android build.
 - Whether a sufficiently powered hub, separate Gemini power applied before USB, or a different hub/cable prevents the whole-bus reset during Gemini insertion.
-- Preset behavior on the exact 1.1.3 Android build until manually tested.
+- Preset behavior on the exact 1.1.4 Android build until manually tested.
 
-Historical verification does not mean the exact 1.1.3 build has completed regression testing.
+Historical verification does not mean the exact 1.1.4 build has completed regression testing.
 
-## 1.1.3 hardware regression checklist
+## 1.1.4 hardware regression checklist
 
 - [ ] Detect the Gemini CH34x and distinguish it from another matching VID/PID device.
 - [ ] Grant USB permission and connect at 9600 8N1.
@@ -195,7 +199,12 @@ Historical verification does not mean the exact 1.1.3 build has completed regres
 - [ ] Repeat Gemini insertion with a powered hub and Gemini external power already stable; note whether USB Serial Terminal keeps its relay handle.
 - [ ] Connect both peripherals to the powered hub before attaching the hub upstream to Android and compare the result with hot-plugging Gemini.
 - [ ] Verify Connection/Control top switching and the compact position/temperature/movement indicator on a short display.
+- [ ] Enter Settings separately from Connection and Control, press Android Back, and verify each returns to the primary page used immediately before entry without closing EAFCON.
 - [ ] Verify Light, Dark, and Night Vision themes; confirm Night Vision has no unintended gray Material surfaces.
+- [ ] Switch English → 한국어 → English in Settings and verify navigation, status, controls, dialogs, preset flows, and common operation messages update and persist after restarting the app.
+- [ ] Select vibration levels 1–5 and verify each gives a short preview pulse; compare the requested 10/30/50/70/90% levels on the test phone.
+- [ ] Enable movement vibration, test all five levels during Demo and a short Gemini move, and confirm vibration stops on movement completion, STOP, disconnect, and app backgrounding.
+- [ ] Restart the app and verify vibration enabled state and selected level persist; confirm the default for a fresh install is Off/Level 3 and legacy Low/Medium/High preferences migrate to levels 2/3/5.
 - [ ] Change serial settings while disconnected, reconnect, then restore the bundled 9600 8N1 defaults.
 
 ## Continuous integration

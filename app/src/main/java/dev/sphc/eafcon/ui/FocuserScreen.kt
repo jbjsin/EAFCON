@@ -1,5 +1,6 @@
 package dev.sphc.eafcon.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -14,6 +15,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -23,24 +26,123 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.sphc.eafcon.R
 import dev.sphc.eafcon.control.MovementState
 import dev.sphc.eafcon.presets.PositionPreset
 import dev.sphc.eafcon.presets.PresetRules
 import dev.sphc.eafcon.settings.*
 
-private enum class AppPage(val label: String) { CONNECTION("Connection"), CONTROL("Control"), SETTINGS("Settings") }
+internal enum class AppPage { CONNECTION, CONTROL, SETTINGS }
 private enum class PresetTab { LOAD, SAVE }
 private enum class PresetSaveMode { NEW, EDIT }
+
+internal val AppPage.isPrimary: Boolean
+    get() = this == AppPage.CONNECTION || this == AppPage.CONTROL
+
+internal fun secondaryBackDestination(current: AppPage, lastPrimary: AppPage): AppPage? = when {
+    current.isPrimary -> null
+    lastPrimary.isPrimary -> lastPrimary
+    else -> AppPage.CONNECTION
+}
+
+@Composable
+private fun AppPage.localizedLabel(): String = stringResource(
+    when (this) {
+        AppPage.CONNECTION -> R.string.page_connection
+        AppPage.CONTROL -> R.string.page_control
+        AppPage.SETTINGS -> R.string.page_settings
+    },
+)
+
+@Composable
+private fun MovementState.localizedLabel(): String = stringResource(
+    when (this) {
+        MovementState.UNKNOWN -> R.string.movement_unknown
+        MovementState.IDLE -> R.string.movement_idle
+        MovementState.MOVING -> R.string.movement_moving
+    },
+)
+
+@Composable
+private fun AppLanguage.localizedLabel(): String = stringResource(
+    when (this) {
+        AppLanguage.ENGLISH -> R.string.language_english
+        AppLanguage.KOREAN -> R.string.language_korean
+    },
+)
+
+@Composable
+private fun localizedRuntimeMessage(raw: String): String {
+    Regex("^Connected to (.+)$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_connected_to, it.groupValues[1])
+    }
+    Regex("^Software safety maximum set to (\\d+)$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_software_max_set, it.groupValues[1].toInt())
+    }
+    Regex("^Move command sent to (\\d+)$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_move_sent, it.groupValues[1].toInt())
+    }
+    Regex("^Relative move command sent \\((.+)\\)$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_relative_move_sent, it.groupValues[1])
+    }
+    Regex("^Preset '(.+)' saved$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_preset_saved, it.groupValues[1])
+    }
+    Regex("^(.+) loaded into Target Position$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_preset_loaded, it.groupValues[1])
+    }
+    Regex("^Exported (\\d+) presets$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_exported_presets, it.groupValues[1].toInt())
+    }
+    Regex("^Validated (\\d+) presets\\. Choose how to apply them\\.$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_validated_presets, it.groupValues[1].toInt())
+    }
+    Regex("^Merged (\\d+) presets$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_merged_presets, it.groupValues[1].toInt())
+    }
+    Regex("^Replaced presets with (\\d+) imported presets$").matchEntire(raw)?.let {
+        return stringResource(R.string.message_replaced_presets, it.groupValues[1].toInt())
+    }
+    return when (raw) {
+        "USB device detached; focuser disconnected" -> stringResource(R.string.message_usb_detached)
+        "Select a USB serial device first" -> stringResource(R.string.message_select_usb)
+        "Requesting USB permission…" -> stringResource(R.string.message_requesting_permission)
+        "USB permission was denied" -> stringResource(R.string.message_permission_denied)
+        "Starting simulated focuser…" -> stringResource(R.string.message_starting_demo)
+        "Demo mode: simulated focuser at 7500 steps" -> stringResource(R.string.message_demo_started)
+        "Disconnected" -> stringResource(R.string.message_disconnected)
+        "Disconnect before changing serial settings" -> stringResource(R.string.message_disconnect_before_serial_change)
+        "Serial settings saved; they apply to the next connection" -> stringResource(R.string.message_serial_saved)
+        "Disconnect before resetting serial settings" -> stringResource(R.string.message_disconnect_before_serial_reset)
+        "Bundled serial defaults restored" -> stringResource(R.string.message_serial_defaults_restored)
+        "Enter a valid positive software maximum" -> stringResource(R.string.message_invalid_software_max)
+        "Enter a valid target position" -> stringResource(R.string.message_invalid_target)
+        "Stop command sent" -> stringResource(R.string.message_stop_sent)
+        "Enter a valid preset position" -> stringResource(R.string.message_invalid_preset_position)
+        "Preset no longer exists" -> stringResource(R.string.message_preset_missing)
+        "Current position is unknown" -> stringResource(R.string.message_current_position_unknown)
+        "Connect to a focuser first" -> stringResource(R.string.message_connect_first)
+        "Focuser is not idle" -> stringResource(R.string.message_focuser_not_idle)
+        "Focuser is not moving" -> stringResource(R.string.message_focuser_not_moving)
+        "Preset name cannot be empty" -> stringResource(R.string.message_preset_name_empty)
+        else -> raw
+    }
+}
 
 @Composable
 fun FocuserScreen(
     themeMode: AppThemeMode,
+    appLanguage: AppLanguage,
+    vibrationSettings: MovementVibrationSettings,
     onThemeModeChange: (AppThemeMode) -> Unit,
+    onAppLanguageChange: (AppLanguage) -> Unit,
+    onVibrationSettingsChange: (MovementVibrationSettings) -> Unit,
     viewModel: FocuserViewModel = viewModel(),
 ) {
     val ui by viewModel.state.collectAsStateWithLifecycle()
     val focuser = ui.focuser
     var pageName by rememberSaveable { mutableStateOf(AppPage.CONNECTION.name) }
+    var lastPrimaryPageName by rememberSaveable { mutableStateOf(AppPage.CONNECTION.name) }
     val page = AppPage.valueOf(pageName)
     var target by rememberSaveable { mutableStateOf("") }
     var softwareMaximum by rememberSaveable { mutableStateOf("") }
@@ -58,11 +160,34 @@ fun FocuserScreen(
     val canMove = focuser.connected && focuser.movement == MovementState.IDLE &&
         !focuser.commandPending && focuser.currentPosition != null && focuser.softwareMaximum != null
 
+    fun navigateTo(destination: AppPage) {
+        if (destination == page) return
+        if (destination.isPrimary) {
+            lastPrimaryPageName = destination.name
+        } else if (page.isPrimary) {
+            lastPrimaryPageName = page.name
+        }
+        pageName = destination.name
+    }
+
+    val backDestination = secondaryBackDestination(page, AppPage.valueOf(lastPrimaryPageName))
+    BackHandler(enabled = backDestination != null) {
+        pageName = checkNotNull(backDestination).name
+    }
+
+    MovementVibrationEffect(
+        moving = focuser.connected && focuser.movement == MovementState.MOVING,
+        settings = vibrationSettings,
+    )
+
     LaunchedEffect(focuser.softwareMaximum) {
         if (softwareMaximum.isBlank()) softwareMaximum = focuser.softwareMaximum?.toString().orEmpty()
     }
     LaunchedEffect(focuser.connected) {
-        if (focuser.connected) pageName = AppPage.CONTROL.name
+        if (focuser.connected) {
+            pageName = AppPage.CONTROL.name
+            lastPrimaryPageName = AppPage.CONTROL.name
+        }
     }
     LaunchedEffect(ui.pendingImportPresets) {
         if (ui.pendingImportPresets == null) confirmReplace = false
@@ -80,7 +205,7 @@ fun FocuserScreen(
             EafconTopBar(
                 themeMode = themeMode,
                 onThemeModeChange = onThemeModeChange,
-                onNavigate = { pageName = it.name },
+                onNavigate = ::navigateTo,
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -91,7 +216,7 @@ fun FocuserScreen(
         ) {
             ConnectionControlSwitcher(
                 selectedPage = page,
-                onNavigate = { pageName = it.name },
+                onNavigate = ::navigateTo,
             )
             ConnectionStatusPill(ui = ui, themeMode = themeMode)
             Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -121,7 +246,14 @@ fun FocuserScreen(
                             presetDialogOpen = true
                         },
                     )
-                    AppPage.SETTINGS -> SettingsPage(ui, viewModel)
+                    AppPage.SETTINGS -> SettingsPage(
+                        ui = ui,
+                        viewModel = viewModel,
+                        appLanguage = appLanguage,
+                        onAppLanguageChange = onAppLanguageChange,
+                        vibrationSettings = vibrationSettings,
+                        onVibrationSettingsChange = onVibrationSettingsChange,
+                    )
                 }
             }
         }
@@ -197,34 +329,34 @@ fun FocuserScreen(
     deleteTarget?.let { preset ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete preset?") },
-            text = { Text("Delete '${preset.name}' at position ${preset.position}?") },
+            title = { Text(stringResource(R.string.delete_preset_title)) },
+            text = { Text(stringResource(R.string.delete_preset_message, preset.name, preset.position)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deletePreset(preset.id)
                     deleteTarget = null
                     presetDialogOpen = false
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.action_delete)) }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 
     if (!confirmReplace) ui.pendingImportPresets?.let { imported ->
         AlertDialog(
             onDismissRequest = viewModel::cancelPresetImport,
-            title = { Text("Import ${imported.size} presets?") },
+            title = { Text(stringResource(R.string.import_presets_title, imported.size)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("The file is valid. Merge updates matching IDs and appends new IDs.")
-                    Text("Import does not move the focuser.")
+                    Text(stringResource(R.string.import_merge_note))
+                    Text(stringResource(R.string.import_no_move_note))
                 }
             },
-            confirmButton = { TextButton(onClick = viewModel::mergeImportedPresets) { Text("Merge") } },
+            confirmButton = { TextButton(onClick = viewModel::mergeImportedPresets) { Text(stringResource(R.string.action_merge)) } },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { confirmReplace = true }) { Text("Replace…") }
-                    TextButton(onClick = viewModel::cancelPresetImport) { Text("Cancel") }
+                    TextButton(onClick = { confirmReplace = true }) { Text(stringResource(R.string.action_replace_ellipsis)) }
+                    TextButton(onClick = viewModel::cancelPresetImport) { Text(stringResource(R.string.action_cancel)) }
                 }
             },
         )
@@ -233,15 +365,15 @@ fun FocuserScreen(
     if (confirmReplace && ui.pendingImportPresets != null) {
         AlertDialog(
             onDismissRequest = { confirmReplace = false },
-            title = { Text("Replace all presets?") },
-            text = { Text("This removes all saved presets and replaces them with the imported file.") },
+            title = { Text(stringResource(R.string.replace_presets_title)) },
+            text = { Text(stringResource(R.string.replace_presets_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.replaceWithImportedPresets()
                     confirmReplace = false
-                }) { Text("Replace all") }
+                }) { Text(stringResource(R.string.action_replace_all)) }
             },
-            dismissButton = { TextButton(onClick = { confirmReplace = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmReplace = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }
 }
@@ -269,7 +401,7 @@ private fun EafconTopBar(
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     AppPage.entries.forEach { destination ->
                         DropdownMenuItem(
-                            text = { Text(destination.label) },
+                            text = { Text(destination.localizedLabel()) },
                             onClick = {
                                 menuOpen = false
                                 onNavigate(destination)
@@ -301,12 +433,12 @@ private fun ConnectionControlSwitcher(
                     Button(
                         onClick = { onNavigate(destination) },
                         modifier = Modifier.weight(1f),
-                    ) { Text(destination.label) }
+                    ) { Text(destination.localizedLabel()) }
                 } else {
                     OutlinedButton(
                         onClick = { onNavigate(destination) },
                         modifier = Modifier.weight(1f),
-                    ) { Text(destination.label) }
+                    ) { Text(destination.localizedLabel()) }
                 }
             }
         }
@@ -317,17 +449,18 @@ private fun ConnectionControlSwitcher(
 private fun ConnectionStatusPill(ui: FocuserUiState, themeMode: AppThemeMode) {
     val connected = ui.focuser.connected
     val text = when {
-        !connected -> "Disconnected"
-        ui.demoMode -> "Connected · DEMO"
-        else -> "Connected · USB"
+        !connected -> stringResource(R.string.status_disconnected)
+        ui.demoMode -> stringResource(R.string.status_connected_demo)
+        else -> stringResource(R.string.status_connected_usb)
     }
+    val movementLabel = ui.focuser.movement.localizedLabel()
     val telemetry = buildString {
         append("P ")
         append(ui.focuser.currentPosition ?: "—")
         append(" · ")
         append(ui.focuser.temperatureCelsius?.let { "%.1f°C".format(it) } ?: "—°C")
         append(" · ")
-        append(ui.focuser.movement.name)
+        append(movementLabel)
     }
     val container = when {
         themeMode == AppThemeMode.NIGHT -> MaterialTheme.colorScheme.primaryContainer
@@ -374,10 +507,10 @@ private fun ConnectionPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
     ) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("USB Devices", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.usb_devices), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    if (ui.devices.isEmpty()) "No compatible devices found"
-                    else "${ui.devices.size} compatible device${if (ui.devices.size == 1) "" else "s"} found",
+                    if (ui.devices.isEmpty()) stringResource(R.string.no_compatible_devices)
+                    else pluralStringResource(R.plurals.compatible_devices_found, ui.devices.size, ui.devices.size),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 ui.devices.forEach { device ->
@@ -394,7 +527,7 @@ private fun ConnectionPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
                             )
                             Column {
                                 Text(device.stableLabel, fontWeight = FontWeight.Medium)
-                                Text(device.displayInfo.driverName ?: "USB Serial", style = MaterialTheme.typography.bodySmall)
+                                Text(device.displayInfo.driverName ?: stringResource(R.string.usb_serial), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         if (ui.selectedDeviceName == device.name) {
@@ -402,39 +535,48 @@ private fun ConnectionPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
                                 device.displayInfo.detailLines().forEach { line ->
                                     Text(line, style = MaterialTheme.typography.bodySmall)
                                 }
-                                Text("Bus/device values are temporary session details.", style = MaterialTheme.typography.labelSmall)
+                                Text(stringResource(R.string.temporary_bus_details), style = MaterialTheme.typography.labelSmall)
                             }
                         }
                         HorizontalDivider()
                     }
                 }
-                Text("Select a device before connecting.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.select_device_before_connecting), style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         onClick = viewModel::refreshDevices,
                         enabled = !ui.isWorking && !focuser.connected,
                         modifier = Modifier.weight(1f),
-                    ) { Text("SCAN") }
+                    ) { Text(stringResource(R.string.action_scan)) }
                     Button(
                         onClick = if (focuser.connected) viewModel::disconnect else viewModel::connect,
                         enabled = if (focuser.connected) !ui.isWorking else !ui.isWorking && ui.selectedDeviceName != null,
                         modifier = Modifier.weight(1f),
-                    ) { Text(if (focuser.connected) "DISCONNECT" else "CONNECT") }
+                    ) {
+                        Text(stringResource(if (focuser.connected) R.string.action_disconnect else R.string.action_connect))
+                    }
                 }
                 OutlinedButton(
                     onClick = viewModel::connectDemo,
                     enabled = !focuser.connected && !ui.isWorking,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("DEMO MODE") }
+                ) { Text(stringResource(R.string.action_demo_mode)) }
             }
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Connection notes", fontWeight = FontWeight.Bold)
-                Text("Scanning only lists devices. A port opens after CONNECT.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.connection_notes), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.scan_note), style = MaterialTheme.typography.bodySmall)
                 val serial = ui.connectionProfile.serial
                 Text(
-                    "${serial.baudRate} baud · ${serial.dataBits}${serial.parity.name.first()}${serial.stopBits.displayName} · ${serial.flowControl.displayName}",
+                    stringResource(
+                        R.string.serial_summary,
+                        serial.baudRate,
+                        serial.dataBits,
+                        serial.parity.name.first().toString(),
+                        serial.stopBits.displayName,
+                        serial.flowControl.displayName,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -467,34 +609,34 @@ private fun ControlPage(
     ) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("CURRENT POSITION", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.current_position), style = MaterialTheme.typography.labelLarge)
                 Text(focuser.currentPosition?.toString() ?: "—", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                 HorizontalDivider()
-                StatusRow("Device max", focuser.deviceMaximum?.toString() ?: "—")
-                StatusRow("Software limit", focuser.softwareMaximum?.toString() ?: "Not set")
-                StatusRow("Temperature", focuser.temperatureCelsius?.let { "%.1f °C".format(it) } ?: "—")
-                StatusRow("Movement", focuser.movement.name)
+                StatusRow(stringResource(R.string.device_max), focuser.deviceMaximum?.toString() ?: "—")
+                StatusRow(stringResource(R.string.software_limit), focuser.softwareMaximum?.toString() ?: stringResource(R.string.not_set))
+                StatusRow(stringResource(R.string.temperature), focuser.temperatureCelsius?.let { "%.1f °C".format(it) } ?: "—")
+                StatusRow(stringResource(R.string.movement), focuser.movement.localizedLabel())
             }
         }
-        CompactNumberAction("Software limit", softwareMaximum, onSoftwareMaximumChange, "SET", onSetSoftwareMaximum,
+        CompactNumberAction(stringResource(R.string.software_limit), softwareMaximum, onSoftwareMaximumChange, stringResource(R.string.action_set), onSetSoftwareMaximum,
             focuser.connected && !focuser.commandPending && softwareMaximum.isNotBlank())
-        CompactNumberAction("Target position", target, onTargetChange, "GO", onMoveTo, canMove && target.isNotBlank())
+        CompactNumberAction(stringResource(R.string.target_position), target, onTargetChange, stringResource(R.string.action_go), onMoveTo, canMove && target.isNotBlank())
         Button(
             onClick = onStop,
             enabled = focuser.connected && focuser.movement == MovementState.MOVING,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-        ) { Text("STOP") }
+        ) { Text(stringResource(R.string.action_stop)) }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Relative move", fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.relative_move), fontWeight = FontWeight.Bold)
                 listOf(5, 25, 50, 100).forEach { step ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(onClick = { onMoveBy(-step) }, enabled = canMove, modifier = Modifier.weight(1f)) { Text("−$step") }
                         Button(onClick = { onMoveBy(step) }, enabled = canMove, modifier = Modifier.weight(1f)) { Text("+$step") }
                     }
                 }
-                Text("Custom steps", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.custom_steps), style = MaterialTheme.typography.labelLarge)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = { customValue?.let { onMoveBy(-it) } },
@@ -516,13 +658,20 @@ private fun ControlPage(
                 }
             }
         }
-        Button(onClick = onOpenPresets, modifier = Modifier.fillMaxWidth()) { Text("PRESETS") }
+        Button(onClick = onOpenPresets, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_presets)) }
         UiMessages(ui)
     }
 }
 
 @Composable
-private fun SettingsPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
+private fun SettingsPage(
+    ui: FocuserUiState,
+    viewModel: FocuserViewModel,
+    appLanguage: AppLanguage,
+    onAppLanguageChange: (AppLanguage) -> Unit,
+    vibrationSettings: MovementVibrationSettings,
+    onVibrationSettingsChange: (MovementVibrationSettings) -> Unit,
+) {
     val profile = ui.connectionProfile
     val serial = profile.serial
     var baudRate by rememberSaveable { mutableStateOf(serial.baudRate.toString()) }
@@ -535,6 +684,16 @@ private fun SettingsPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
     var responseTimeout by rememberSaveable { mutableStateOf(serial.responseTimeoutMs.toString()) }
     var localError by remember { mutableStateOf<String?>(null) }
     val editable = !ui.focuser.connected
+    val languageOptions = listOf(
+        AppLanguage.ENGLISH to AppLanguage.ENGLISH.localizedLabel(),
+        AppLanguage.KOREAN to AppLanguage.KOREAN.localizedLabel(),
+    )
+    val previewVibration = rememberMovementVibrationPreview()
+    val invalidBaudRate = stringResource(R.string.invalid_baud_rate)
+    val invalidReadTimeout = stringResource(R.string.invalid_read_timeout)
+    val invalidWriteTimeout = stringResource(R.string.invalid_write_timeout)
+    val invalidResponseTimeout = stringResource(R.string.invalid_response_timeout)
+    val invalidSerialSettings = stringResource(R.string.invalid_serial_settings)
 
     LaunchedEffect(serial) {
         baudRate = serial.baudRate.toString()
@@ -554,64 +713,118 @@ private fun SettingsPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
     ) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Serial connection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(profile.name)
-                Text("Settings apply to the next connection. Disconnect before editing.", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.language_section), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                ChoiceSetting(
+                    label = stringResource(R.string.language_label),
+                    value = appLanguage.localizedLabel(),
+                    options = languageOptions.map { it.second },
+                    enabled = true,
+                ) { selectedLabel ->
+                    languageOptions.firstOrNull { it.second == selectedLabel }?.first?.let(onAppLanguageChange)
+                }
+                Text(stringResource(R.string.language_description), style = MaterialTheme.typography.bodySmall)
             }
         }
-        NumberSetting("Baud rate", baudRate, { baudRate = it.filter(Char::isDigit) }, editable)
-        ChoiceSetting("Data bits", dataBits.toString(), (5..8).map { it.toString() }, editable) { dataBits = it.toInt() }
-        ChoiceSetting(
-            "Stop bits", SerialStopBits.valueOf(stopBitsName).displayName,
-            SerialStopBits.entries.map { it.displayName }, editable,
-        ) { label -> stopBitsName = SerialStopBits.entries.first { it.displayName == label }.name }
-        ChoiceSetting("Parity", parityName, SerialParity.entries.map { it.name }, editable) { parityName = it }
-        ChoiceSetting(
-            "Flow control", SerialFlowControl.valueOf(flowControlName).displayName,
-            SerialFlowControl.entries.map { it.displayName }, editable,
-        ) { label -> flowControlName = SerialFlowControl.entries.first { it.displayName == label }.name }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.movement_vibration), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.vibrate_while_moving), modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = vibrationSettings.enabled,
+                        onCheckedChange = {
+                            onVibrationSettingsChange(vibrationSettings.copy(enabled = it))
+                        },
+                    )
+                }
+                Text(stringResource(R.string.movement_vibration_description), style = MaterialTheme.typography.bodySmall)
+                HorizontalDivider()
+                Text(stringResource(R.string.vibration_strength), fontWeight = FontWeight.Medium)
+                SegmentedButtons(
+                    options = VibrationStrength.entries.map { it to it.level.toString() },
+                    selected = vibrationSettings.strength,
+                    onSelected = { selected ->
+                        previewVibration(
+                            selected,
+                            vibrationSettings.enabled && ui.focuser.connected &&
+                                ui.focuser.movement == MovementState.MOVING,
+                        )
+                        onVibrationSettingsChange(vibrationSettings.copy(strength = selected))
+                    },
+                )
+                Text(
+                    stringResource(
+                        R.string.vibration_strength_selected,
+                        vibrationSettings.strength.level,
+                        vibrationSettings.strength.percent,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(stringResource(R.string.vibration_hardware_note), style = MaterialTheme.typography.bodySmall)
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Timeouts", fontWeight = FontWeight.Bold)
-                NumberSetting("Read timeout (ms)", readTimeout, { readTimeout = it.filter(Char::isDigit) }, editable)
-                NumberSetting("Write timeout (ms)", writeTimeout, { writeTimeout = it.filter(Char::isDigit) }, editable)
-                NumberSetting("Response timeout (ms)", responseTimeout, { responseTimeout = it.filter(Char::isDigit) }, editable)
+                Text(stringResource(R.string.serial_connection), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(profile.name)
+                Text(stringResource(R.string.serial_apply_note), style = MaterialTheme.typography.bodySmall)
+                HorizontalDivider()
+                NumberSetting(stringResource(R.string.baud_rate), baudRate, { baudRate = it.filter(Char::isDigit) }, editable)
+                ChoiceSetting(stringResource(R.string.data_bits), dataBits.toString(), (5..8).map { it.toString() }, editable) { dataBits = it.toInt() }
+                ChoiceSetting(
+                    stringResource(R.string.stop_bits), SerialStopBits.valueOf(stopBitsName).displayName,
+                    SerialStopBits.entries.map { it.displayName }, editable,
+                ) { label -> stopBitsName = SerialStopBits.entries.first { it.displayName == label }.name }
+                ChoiceSetting(stringResource(R.string.parity), parityName, SerialParity.entries.map { it.name }, editable) { parityName = it }
+                ChoiceSetting(
+                    stringResource(R.string.flow_control), SerialFlowControl.valueOf(flowControlName).displayName,
+                    SerialFlowControl.entries.map { it.displayName }, editable,
+                ) { label -> flowControlName = SerialFlowControl.entries.first { it.displayName == label }.name }
+                HorizontalDivider()
+                Text(stringResource(R.string.timeouts), fontWeight = FontWeight.Bold)
+                NumberSetting(stringResource(R.string.read_timeout_ms), readTimeout, { readTimeout = it.filter(Char::isDigit) }, editable)
+                NumberSetting(stringResource(R.string.write_timeout_ms), writeTimeout, { writeTimeout = it.filter(Char::isDigit) }, editable)
+                NumberSetting(stringResource(R.string.response_timeout_ms), responseTimeout, { responseTimeout = it.filter(Char::isDigit) }, editable)
+                localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = viewModel::resetConnectionSettings,
+                        enabled = editable,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(stringResource(R.string.action_reset)) }
+                    Button(
+                        onClick = {
+                            localError = runCatching {
+                                SerialParameters(
+                                    baudRate = baudRate.toIntOrNull() ?: error(invalidBaudRate),
+                                    dataBits = dataBits,
+                                    stopBits = SerialStopBits.valueOf(stopBitsName),
+                                    parity = SerialParity.valueOf(parityName),
+                                    flowControl = SerialFlowControl.valueOf(flowControlName),
+                                    readTimeoutMs = readTimeout.toIntOrNull() ?: error(invalidReadTimeout),
+                                    writeTimeoutMs = writeTimeout.toIntOrNull() ?: error(invalidWriteTimeout),
+                                    responseTimeoutMs = responseTimeout.toIntOrNull() ?: error(invalidResponseTimeout),
+                                )
+                            }.fold(
+                                onSuccess = viewModel::saveConnectionSettings,
+                                onFailure = { it.message ?: invalidSerialSettings },
+                            )
+                        },
+                        enabled = editable,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(stringResource(R.string.action_save)) }
+                }
             }
-        }
-        localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = viewModel::resetConnectionSettings, enabled = editable, modifier = Modifier.weight(1f)) { Text("RESET") }
-            Button(
-                onClick = {
-                    localError = runCatching {
-                        SerialParameters(
-                            baudRate = baudRate.toIntOrNull() ?: error("Enter a valid baud rate"),
-                            dataBits = dataBits,
-                            stopBits = SerialStopBits.valueOf(stopBitsName),
-                            parity = SerialParity.valueOf(parityName),
-                            flowControl = SerialFlowControl.valueOf(flowControlName),
-                            readTimeoutMs = readTimeout.toIntOrNull() ?: error("Enter a valid read timeout"),
-                            writeTimeoutMs = writeTimeout.toIntOrNull() ?: error("Enter a valid write timeout"),
-                            responseTimeoutMs = responseTimeout.toIntOrNull() ?: error("Enter a valid response timeout"),
-                        )
-                    }.fold(
-                        onSuccess = viewModel::saveConnectionSettings,
-                        onFailure = { it.message ?: "Invalid serial settings" },
-                    )
-                },
-                enabled = editable,
-                modifier = Modifier.weight(1f),
-            ) { Text("SAVE") }
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Compatibility", fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.compatibility), fontWeight = FontWeight.Bold)
                 Text(
-                    "Connection values are loaded from a versioned JSON profile. Profile selection is reserved for a future update.",
+                    stringResource(R.string.profile_note),
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "Changing serial values does not add a new protocol. Commands remain MyFocuserPro2-compatible and other devices are unverified.",
+                    stringResource(R.string.protocol_note),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -653,9 +866,12 @@ private fun PresetsDialog(
                 Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("Presets", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.presets), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 SegmentedButtons(
-                    options = listOf(PresetTab.LOAD to "LOAD", PresetTab.SAVE to "SAVE"),
+                    options = listOf(
+                        PresetTab.LOAD to stringResource(R.string.preset_load),
+                        PresetTab.SAVE to stringResource(R.string.preset_save),
+                    ),
                     selected = tab,
                     onSelected = onTabChange,
                 )
@@ -663,13 +879,13 @@ private fun PresetsDialog(
                     OutlinedTextField(
                         value = search,
                         onValueChange = onSearchChange,
-                        label = { Text("Search presets") },
+                        label = { Text(stringResource(R.string.search_presets)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     val filtered = ui.presets.filter { it.name.contains(search, ignoreCase = true) }
                     Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
-                        if (filtered.isEmpty()) Text("No matching presets", style = MaterialTheme.typography.bodySmall)
+                        if (filtered.isEmpty()) Text(stringResource(R.string.no_matching_presets), style = MaterialTheme.typography.bodySmall)
                         filtered.forEach { preset ->
                             Row(
                                 Modifier.fillMaxWidth().clickable { onSelectPreset(preset) }.padding(vertical = 4.dp),
@@ -683,11 +899,14 @@ private fun PresetsDialog(
                             }
                         }
                     }
-                    Text("Loading only fills Target Position. It never moves the focuser.", style = MaterialTheme.typography.bodySmall)
-                    DialogActions("LOAD", selectedPresetId != null, onDismiss, onLoad)
+                    Text(stringResource(R.string.preset_load_note), style = MaterialTheme.typography.bodySmall)
+                    DialogActions(stringResource(R.string.preset_load), selectedPresetId != null, onDismiss, onLoad)
                 } else {
                     SegmentedButtons(
-                        options = listOf(PresetSaveMode.NEW to "NEW", PresetSaveMode.EDIT to "EDIT"),
+                        options = listOf(
+                            PresetSaveMode.NEW to stringResource(R.string.preset_new),
+                            PresetSaveMode.EDIT to stringResource(R.string.preset_edit),
+                        ),
                         selected = saveMode,
                         onSelected = onSaveModeChange,
                     )
@@ -695,31 +914,31 @@ private fun PresetsDialog(
                     OutlinedTextField(
                         value = presetName,
                         onValueChange = onPresetNameChange,
-                        label = { Text("Preset name") },
-                        placeholder = { if (saveMode == PresetSaveMode.NEW) Text("Enter a name") },
+                        label = { Text(stringResource(R.string.preset_name)) },
+                        placeholder = { if (saveMode == PresetSaveMode.NEW) Text(stringResource(R.string.enter_name)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = presetPosition,
                         onValueChange = onPresetPositionChange,
-                        label = { Text("Position") },
+                        label = { Text(stringResource(R.string.position)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ContextValue("Current position", ui.focuser.currentPosition?.toString() ?: "—", Modifier.weight(1f))
-                        ContextValue("Software limit", ui.focuser.softwareMaximum?.toString() ?: "—", Modifier.weight(1f))
+                        ContextValue(stringResource(R.string.current_position), ui.focuser.currentPosition?.toString() ?: "—", Modifier.weight(1f))
+                        ContextValue(stringResource(R.string.software_limit), ui.focuser.softwareMaximum?.toString() ?: "—", Modifier.weight(1f))
                     }
                     Text(
-                        if (saveMode == PresetSaveMode.NEW) "Position starts at the current value. You can edit it before creating."
-                        else "UPDATE changes the selected preset. It never moves the focuser.",
+                        if (saveMode == PresetSaveMode.NEW) stringResource(R.string.preset_new_note)
+                        else stringResource(R.string.preset_edit_note),
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    editorError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    editorError?.let { Text(localizedRuntimeMessage(it), color = MaterialTheme.colorScheme.error) }
                     DialogActions(
-                        if (saveMode == PresetSaveMode.NEW) "CREATE" else "UPDATE",
+                        stringResource(if (saveMode == PresetSaveMode.NEW) R.string.action_create else R.string.action_update),
                         presetName.isNotBlank() && presetPosition.isNotBlank() &&
                             (saveMode == PresetSaveMode.NEW || selectedPresetId != null),
                         onDismiss,
@@ -727,14 +946,14 @@ private fun PresetsDialog(
                     )
                     if (saveMode == PresetSaveMode.EDIT && selectedPresetId != null) {
                         TextButton(onClick = onDelete, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                            Text("DELETE PRESET", color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.action_delete_preset), color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    TextButton(onClick = onImport) { Text("Import") }
-                    TextButton(onClick = onExport) { Text("Export") }
+                    TextButton(onClick = onImport) { Text(stringResource(R.string.action_import)) }
+                    TextButton(onClick = onExport) { Text(stringResource(R.string.action_export)) }
                 }
             }
         }
@@ -747,7 +966,7 @@ private fun PresetSelector(presets: List<PositionPreset>, selectedPresetId: Stri
     val selected = presets.firstOrNull { it.id == selectedPresetId }
     Box(Modifier.fillMaxWidth()) {
         OutlinedButton(onClick = { open = true }, enabled = presets.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-            Text(selected?.name ?: "Select a preset to edit")
+            Text(selected?.name ?: stringResource(R.string.select_preset_to_edit))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             presets.forEach { preset ->
@@ -764,11 +983,27 @@ private fun PresetSelector(presets: List<PositionPreset>, selectedPresetId: Stri
 }
 
 @Composable
-private fun <T> SegmentedButtons(options: List<Pair<T, String>>, selected: T, onSelected: (T) -> Unit) {
+private fun <T> SegmentedButtons(
+    options: List<Pair<T, String>>,
+    selected: T,
+    enabled: Boolean = true,
+    onSelected: (T) -> Unit,
+) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { (value, label) ->
-            if (value == selected) Button(onClick = { onSelected(value) }, modifier = Modifier.weight(1f)) { Text(label) }
-            else OutlinedButton(onClick = { onSelected(value) }, modifier = Modifier.weight(1f)) { Text(label) }
+            if (value == selected) {
+                Button(
+                    onClick = { onSelected(value) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) { Text(label) }
+            } else {
+                OutlinedButton(
+                    onClick = { onSelected(value) },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                ) { Text(label) }
+            }
         }
     }
 }
@@ -776,7 +1011,7 @@ private fun <T> SegmentedButtons(options: List<Pair<T, String>>, selected: T, on
 @Composable
 private fun DialogActions(label: String, enabled: Boolean, onCancel: () -> Unit, onConfirm: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("CANCEL") }
+        TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.action_cancel_upper)) }
         Button(onClick = onConfirm, enabled = enabled, modifier = Modifier.weight(1f)) { Text(label) }
     }
 }
@@ -883,8 +1118,8 @@ private fun ChoiceSetting(
 
 @Composable
 private fun UiMessages(ui: FocuserUiState) {
-    ui.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    ui.message?.let { Text(localizedRuntimeMessage(it), style = MaterialTheme.typography.bodySmall) }
     ui.focuser.lastError?.let {
-        Text("Serial error: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(stringResource(R.string.serial_error, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }

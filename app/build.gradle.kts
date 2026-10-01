@@ -12,13 +12,19 @@ android {
         applicationId = "dev.sphc.eafcon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.1.3"
+        versionCode = 9
+        versionName = "1.1.4"
 
     }
 
     buildFeatures {
         compose = true
+    }
+
+    bundle {
+        language {
+            enableSplit = false
+        }
     }
 
     compileOptions {
