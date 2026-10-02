@@ -2,7 +2,7 @@
 
 ## 현재 상태와 문서 기준
 
-- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 1.1.5 최초 실행은 앱 내부 `filesDir/Preset.json`을 만들고 `Default System` 위치 `7500`을 저장한다. 이전 SharedPreferences 프리셋은 이 파일로 한 번 이관한다. 가져오기는 선택한 파일 전체를 검증한 뒤 ID 기준으로 내부 `Preset.json`에 즉시 병합하고 원자적으로 저장한다. Android Auto Backup은 활성 상태이므로 동일 application ID 재설치 때 `Preset.json` 또는 이전 SharedPreferences가 복원될 수 있다. 1.1.5는 Connection/Control/Settings 화면 분리, 항상 보이는 Connection/Control 상단 전환부와 스크롤 밖의 연결·위치·온도·이동 상태 표시, 팝업 전용 프리셋 관리, Light/Dark/Night Vision 테마, 버전형 JSON 직렬 연결 설정, 설정 화면의 영문/한글 선택과 이동 중 진동을 포함한다. 설정 화면은 인터페이스·이동 진동·시리얼 연결·호환성 카드로 나뉜다. 이동 진동은 기본 Off/3단계이며 1–5단계가 Android 최대 진폭의 10/30/50/70/90%를 사용한다. 단계 선택 때 120ms 확인 진동을 내고, 앱이 포그라운드이며 상태가 `MOVING`인 동안만 반복되며 정지·연결 해제·백그라운드 전환 때 취소된다. 앱 언어는 기본 영문이며 사용자가 고른 값은 로컬에 저장되고 Activity의 지역화된 리소스 구성에 적용된다. Night Vision은 Material의 전체 surface-container 계열을 검정/검붉은색으로 지정해 회색 기본 표면이 나타나지 않게 한다. 연결 프로필 선택 UI는 아직 없으며 번들 기본 프로필과 사용자가 편집한 활성 프로필만 사용한다. 런처 아트는 포커서 전체가 보이도록 캔버스 너비의 약 절반 크기로 중앙에 배치해 넓은 흰 여백을 둔다. 사용자는 Gemini EAF에서 기존 앱이 만족스럽게 작동함을 확인했지만 1.1.5의 전체 실기 회귀 시험은 아직 남아 있다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 빌드 메타데이터는 1.1.5, package/application ID는 `dev.sphc.eafcon`, `compileSdk`/`targetSdk`는 36이며 APK 이름은 `EAFCON_1.1.5.apk`다. 이전 개발 package `com.astrophoto.geminifocuser`와는 별도 Android 앱으로 설치된다.
+- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 현재 미출시 1.1.6 소스는 같은 코드·버전·커밋에서 Google Play Production(`dev.sphc.eafcon`, `EAFCON`, `prodRelease` AAB)과 GitHub Development(`dev.sphc.eafcon.dev`, `EAFCON Dev`, `devDebug` APK)를 만드는 영구 이중 채널 정책을 사용한다. 두 앱은 함께 설치할 수 있지만 내부 파일·설정·백업·USB 권한을 공유하지 않으며 한 번에 하나만 포커서에 연결해야 한다. 최초 실행은 각 앱 내부 `filesDir/Preset.json`을 만들고 `Default System` 위치 `7500`을 저장한다. 이전 SharedPreferences 프리셋은 이 파일로 한 번 이관한다. 가져오기는 선택한 파일 전체를 검증한 뒤 ID 기준으로 내부 `Preset.json`에 즉시 병합하고 원자적으로 저장한다. Android Auto Backup은 application ID별로 활성 상태다. 1.1.6은 Connection/Control/Settings 화면 분리, 항상 보이는 Connection/Control 상단 전환부와 스크롤 밖의 연결·위치·온도·이동 상태 표시, 팝업 전용 프리셋 관리, Light/Dark/Night Vision 테마, 버전형 JSON 직렬 연결 설정, 설정 화면의 영문/한글 선택과 이동 중 진동을 포함한다. 사용자는 Gemini EAF에서 기존 앱이 만족스럽게 작동함을 확인했지만 1.1.6의 전체 실기 회귀 시험은 아직 남아 있다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 공유 빌드 메타데이터는 versionCode 11/versionName 1.1.6, `compileSdk`/`targetSdk` 36이다.
 - 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED / SOURCE-VERIFIED·HARDWARE-UNVERIFIED / UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
 - 실제 패키지 경로와 현재 빌드 버전은 `app/` 및 `gradle/libs.versions.toml`에 고정했다. `gradlew` wrapper와 SDK 경로가 설정된 로컬 `local.properties`가 준비되어 있다. `local.properties`는 추적하지 않는다.
 - 이후 작업자는 수정 전 두 지침 파일을 읽고, 구조나 작업 흐름이 바뀌면 같은 변경에서 문서도 갱신한다.
@@ -75,7 +75,7 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 
 - **VERIFIED:** 실제 Gemini EAF의 CH34x 열거, Android USB Host 통신, 9600 8N1, `:02#`/`EOK#`, `:00#` 위치, `:01#` 이동 상태, `:06#` 온도, `:08#` 최대 위치, 정규 `:05<position>#` 절대 이동, 장거리 이동의 `I1#` → `I0#`, 기존 EAFCON을 통한 실제 장치 운용.
 - **SOURCE-VERIFIED / HARDWARE-UNVERIFIED ON GEMINI:** STOP/Abort `:27#`. INDI MyFocuserPro2 소스에 근거해 구현했지만 이 Gemini에서 별도 물리 정지 결과가 기록되지 않았다.
-- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 포커서 내부의 현재 위치 표현값을 안전하게 변경하는 명령/동작, powered hub/별도 전원 구성에서 Gemini hot-plug가 릴레이 연결을 유지하는지 여부, 전체 1.1.5 실기 회귀 결과.
+- **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 포커서 내부의 현재 위치 표현값을 안전하게 변경하는 명령/동작, powered hub/별도 전원 구성에서 Gemini hot-plug가 릴레이 연결을 유지하는지 여부, 전체 1.1.6 실기 회귀 결과.
 
 ## 후속 검토 아이디어
 
@@ -110,9 +110,12 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 Windows PowerShell에서 저장소 루트에서 실행한다. JDK 17과 Android SDK가 필요하며 SDK 경로는 각 개발자 환경의 `local.properties`에 설정한다.
 
 ```powershell
-.\gradlew.bat :app:assembleDebug
-.\gradlew.bat :app:testDebugUnitTest
-.\gradlew.bat :app:bundleRelease
+.\gradlew.bat :app:testDevDebugUnitTest
+.\gradlew.bat :app:assembleDevDebug
+.\gradlew.bat :app:lintDevDebug
+.\gradlew.bat :app:bundleProdRelease
+.\gradlew.bat :app:lintVitalProdRelease
+.\gradlew.bat :app:archiveProdReleaseBundle
 ```
 
 빌드 실패는 숨기지 않고 원인과 재현 명령을 기록한다. 하드웨어 검증은 별도 수동 절차다.
@@ -126,3 +129,4 @@ Windows PowerShell에서 저장소 루트에서 실행한다. JDK 17과 Android 
 - Git 초기화는 구현 시작 시 수행한다. 기능별로 작은 변경을 만들고 빌드/테스트 결과를 확인한다. 다른 작업자의 변경을 덮어쓰거나 공유 브랜치를 임의로 되돌리지 않는다. 생성 파일과 로컬 비밀/장치 로그는 추적하지 않는다.
 - 병렬 작업 시 `usb`, `protocol`, `control`, `ui`, 테스트/문서 영역으로 담당 파일을 나눈다. 공통 인터페이스와 패키지 경로를 먼저 합의하고 중앙 Gradle 설정·Manifest·README 같은 파일의 동시 편집을 피한다. 충돌 가능성이 생기면 담당자에게 변경 범위를 알리고 통합 담당자가 하나씩 반영한다.
 - Google Play 업로드마다 `versionCode`를 증가시킨다. release artifact는 AAB이며 Play App Signing을 사용한다. keystore, 비밀번호, 로컬 signing properties와 배포 secrets는 절대 저장소에 커밋하지 않는다.
+- 영구 배포 정책은 Google Play Production과 GitHub Development의 이중 채널이다. 하나의 확정 커밋에서 같은 versionName/versionCode로 `prodRelease` AAB와 `devDebug` APK를 만든다. GitHub에는 `EAFCON_Dev_<version>.apk`만 올리고 개발·필드 테스트 빌드임을 명시한다. Production AAB는 `EAFCON_<version>_Play.aab`와 버전·코드·커밋·해시·날짜·서명 상태 기록을 로컬에 보관한다. 명시적 요청 없이는 Play 업로드를 하지 않으며, 산출물 사이에 소스를 바꾸지 않는다.

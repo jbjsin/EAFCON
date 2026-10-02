@@ -4,16 +4,18 @@
 
 Use Android Studio with JDK 17, Android SDK Platform 36, and the Gradle/Android Gradle Plugin versions pinned by the repository. The local SDK path belongs in ignored `local.properties`.
 
-EAFCON 1.1.5 uses:
+The current unreleased EAFCON 1.1.6 source uses:
 
-- Namespace and application ID: `dev.sphc.eafcon`
+- Shared namespace: `dev.sphc.eafcon`
+- Production application ID / label: `dev.sphc.eafcon` / `EAFCON`
+- Development application ID / label: `dev.sphc.eafcon.dev` / `EAFCON Dev`
 - `minSdk = 26`
 - `compileSdk = 36`
 - `targetSdk = 36`
-- `versionCode = 10`
-- `versionName = 1.1.5`
+- `versionCode = 11`
+- `versionName = 1.1.6`
 
-The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.5 as a separate application rather than an in-place update of those builds. It updates 1.1.1 through 1.1.4 when the APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
+The `distribution` flavor dimension produces only `devDebug` and `prodRelease`; unused `devRelease` and `prodDebug` variants are disabled. Both variants share the same Kotlin source tree, versionName, versionCode, and release commit. Do not maintain separate source branches merely to change package identity, label, signing, or artifact type.
 
 The project uses Kotlin, Jetpack Compose, AndroidX Lifecycle, Coroutines, and `usb-serial-for-android` 3.11.0. The serial dependency is published through JitPack, supports CH340/CH341 devices, and is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -22,18 +24,35 @@ The project uses Kotlin, Jetpack Compose, AndroidX Lifecycle, Coroutines, and `u
 From PowerShell at the repository root:
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest
-.\gradlew.bat :app:assembleDebug
-.\gradlew.bat :app:bundleRelease
+.\gradlew.bat :app:testDevDebugUnitTest
+.\gradlew.bat :app:assembleDevDebug
+.\gradlew.bat :app:lintDevDebug
+.\gradlew.bat :app:bundleProdRelease
+.\gradlew.bat :app:lintVitalProdRelease
+.\gradlew.bat :app:archiveProdReleaseBundle
 ```
 
-Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.5.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
+Unix equivalents use `./gradlew`. Key outputs are:
 
-- A debug APK is signed with the local Android debug key and is intended for development/testing.
-- A release APK is an installable release-mode package, but this project does not currently define a production signing configuration.
-- A release AAB is the upload format for Google Play. It is not directly installed like an APK; Google Play generates optimized APKs from it.
+- GitHub Development APK: `app/build/outputs/apk/dev/debug/EAFCON_Dev_1.1.6.apk`
+- Raw Production bundle: `app/build/outputs/bundle/prodRelease/app-prod-release.aab`
+- Locally archived Production bundle: `app/build/outputs/distribution/EAFCON_1.1.6_Play.aab`
+
+- `devDebug` is signed with the local Android debug key and is intended for GitHub development/field testing.
+- `prodRelease` is the Google Play source artifact. Production upload signing is not configured, so the current AAB must not be described as Play-upload-ready.
+- An AAB is not directly installed like an APK; Google Play generates optimized APKs from it.
 
 `versionCode` must increase for every build uploaded to Google Play, even when the user-facing `versionName` is unchanged. Google Play publication is still pending and this repository has no deployment workflow.
+
+## Permanent distribution policy
+
+Google Play is the official Production channel. GitHub Releases distribute only the `EAFCON Dev` APK. A normal release uses one finalized source commit for both artifacts: validate, set the shared version, commit, push when requested, build `devDebug`, build `prodRelease`, publish only the Dev APK to GitHub, and archive the Production AAB locally. Do not attach the Production AAB to GitHub or upload to Google Play unless the user explicitly requests that external action.
+
+The GitHub release note must state: "This GitHub APK is the EAFCON development/field-test build. The official production distribution channel is Google Play."
+
+Archive the Production AAB with a local manifest containing versionName, versionCode, commit SHA, filename, SHA-256, build date, and signing status. No binary archive or signing secret belongs in Git. Promotion between Google Play tracks should reuse the same uploaded artifact rather than rebuilding it.
+
+Pre-Play releases through 1.1.5 used `dev.sphc.eafcon` with a development/debug key. Do not convert that key into the Production identity. The first Play migration may require exporting presets, uninstalling the pre-Play app, installing the Play app, and importing presets. Future `dev.sphc.eafcon.dev` installations can coexist with Production, but the packages have separate files, preferences, backups, and USB permissions. Disconnect or close one app before the other opens the same USB focuser; no cross-app USB arbitration is implemented.
 
 ## Google Play signing preparation
 
@@ -118,7 +137,7 @@ Export/import uses the Storage Access Framework through `CreateDocument` and `Op
 
 Import is limited to 1 MB and 500 entries. The file picker selection is parsed and validated completely before it is applied. Import always merges into app-private `Preset.json`: matching IDs are updated, new IDs are appended, and duplicate names with different IDs remain separate. The merged document is written atomically; failed validation or a write failure does not replace the stored file. USB paths, IDs, and enumeration values are never stored as preset identity. Schema changes require an explicit version/migration path.
 
-`android:allowBackup="true"` remains enabled and no preset-specific exclusion rule is configured. Android Auto Backup therefore includes both `filesDir/Preset.json` and SharedPreferences by default. Uninstalling and reinstalling the same application ID can restore previous presets before first launch; a restored legacy `position_presets_v1` value is then migrated into `Preset.json`. For a clean-install test, clear EAFCON storage after installation and before launch, or run `adb shell pm clear dev.sphc.eafcon`. Whether presets should remain backed up or receive an explicit reset/exclusion policy is a future product decision.
+`android:allowBackup="true"` remains enabled and no preset-specific exclusion rule is configured. Android Auto Backup therefore includes both `filesDir/Preset.json` and SharedPreferences by default. Uninstalling and reinstalling the same application ID can restore previous presets before first launch; a restored legacy `position_presets_v1` value is then migrated into `Preset.json`. Production and Dev backup sets are independent. For a clean-install test, clear the relevant app storage after installation and before launch, or run `adb shell pm clear dev.sphc.eafcon` for Production and `adb shell pm clear dev.sphc.eafcon.dev` for Dev. Whether presets should remain backed up or receive an explicit reset/exclusion policy is a future product decision.
 
 Selecting a preset only copies its position to Target Position. Preset CRUD and import/export issue no hardware commands. The existing GO/controller path performs the final safety validation and movement.
 
@@ -150,7 +169,9 @@ The field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconn
 
 On 2026-10-01, after the language, card-grouped Settings, five-level movement vibration, and secondary-page Back navigation changes, `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:bundleRelease`, and `:app:lintDebug` completed successfully with JDK 17 and Android SDK 36; release lint-vital also passed. All 44 JVM tests passed, including four primary/secondary navigation cases and five vibration-level/migration/effect-key cases. Release build metadata is `dev.sphc.eafcon`, version code 9, and version name 1.1.4. Production upload signing remains intentionally unconfigured. Preview/continuous vibration timing, hardware amplitude differences, lifecycle cancellation, and physical Android Back-key behavior still require on-device regression testing.
 
-On 2026-10-02, after moving preset persistence to app-private `Preset.json`, adding the first-run `Default System`/`7500` entry, migrating legacy SharedPreferences, and defining Import as validated atomic merge, 46 JVM tests passed. The debug APK, release AAB, debug lint, and release lint-vital completed successfully with release metadata `dev.sphc.eafcon`, version code 10, and version name 1.1.5. Production upload signing remains intentionally unconfigured.
+On 2026-10-02, after moving preset persistence to app-private `Preset.json`, adding the first-run `Default System`/`7500` entry, migrating legacy SharedPreferences, and defining Import as validated atomic merge, 46 JVM tests passed. The 1.1.5 debug APK, release AAB, debug lint, and release lint-vital completed successfully with version code 10. Production upload signing remained intentionally unconfigured. The dual-channel 1.1.6 build results are recorded after its variant validation completes.
+
+On 2026-10-02, the unreleased 1.1.6 dual-channel structure generated only the intended `devDebug` and `prodRelease` application variants. All 46 JVM tests passed; the Dev APK, Production AAB, Dev lint, and Production lint-vital completed successfully. Artifact inspection confirmed `dev.sphc.eafcon.dev` / `EAFCON Dev` for the debug-signed Dev APK and `dev.sphc.eafcon` / `EAFCON` for the unsigned Production AAB. The AAB is a structural validation artifact and is not Play-upload-ready. These were validation builds from an uncommitted working tree, not canonical release artifacts.
 
 ## Verification model
 
@@ -177,13 +198,13 @@ On 2026-10-02, after moving preset persistence to app-private `Preset.json`, add
 - RTS/DTR requirements on other hardware.
 - Safe automatic Gemini identification.
 - Commands that change device maximum; EAFCON does not send one.
-- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.5 Android build.
+- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.6 Android builds.
 - Whether a sufficiently powered hub, separate Gemini power applied before USB, or a different hub/cable prevents the whole-bus reset during Gemini insertion.
-- Preset behavior on the exact 1.1.5 Android build until manually tested.
+- Preset behavior on the exact 1.1.6 Android builds until manually tested.
 
-Historical verification does not mean the exact 1.1.5 build has completed regression testing.
+Historical verification does not mean the exact 1.1.6 builds have completed regression testing.
 
-## 1.1.5 hardware regression checklist
+## 1.1.6 hardware regression checklist
 
 - [ ] Detect the Gemini CH34x and distinguish it from another matching VID/PID device.
 - [ ] Grant USB permission and connect at 9600 8N1.

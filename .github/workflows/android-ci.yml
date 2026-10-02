@@ -27,7 +27,13 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run JVM unit tests
-        run: ./gradlew :app:testDebugUnitTest
+        run: ./gradlew :app:testDevDebugUnitTest
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug
+      - name: Assemble development APK
+        run: ./gradlew :app:assembleDevDebug
+
+      - name: Build production bundle
+        run: ./gradlew :app:bundleProdRelease
+
+      - name: Run development and production lint
+        run: ./gradlew :app:lintDevDebug :app:lintVitalProdRelease

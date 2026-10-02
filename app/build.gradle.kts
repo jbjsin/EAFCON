@@ -12,9 +12,21 @@ android {
         applicationId = "dev.sphc.eafcon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.1.5"
+        versionCode = 11
+        versionName = "1.1.6"
 
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("dev") {
+            dimension = "distribution"
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "EAFCON Dev")
+        }
+        create("prod") {
+            dimension = "distribution"
+        }
     }
 
     buildFeatures {
@@ -39,9 +51,30 @@ android {
 
 android.applicationVariants.all {
     outputs.all {
+        val filePrefix = if (flavorName == "dev") "EAFCON_Dev" else "EAFCON"
         (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-            "EAFCON_${android.defaultConfig.versionName}.apk"
+            "${filePrefix}_${versionName}.apk"
     }
+}
+
+androidComponents {
+    beforeVariants(selector().all()) { variantBuilder ->
+        val distribution = variantBuilder.productFlavors
+            .firstOrNull { it.first == "distribution" }
+            ?.second
+        variantBuilder.enable = when (distribution) {
+            "dev" -> variantBuilder.buildType == "debug"
+            "prod" -> variantBuilder.buildType == "release"
+            else -> false
+        }
+    }
+}
+
+tasks.register<Copy>("archiveProdReleaseBundle") {
+    dependsOn("bundleProdRelease")
+    from(layout.buildDirectory.file("outputs/bundle/prodRelease/app-prod-release.aab"))
+    into(layout.buildDirectory.dir("outputs/distribution"))
+    rename { "EAFCON_${android.defaultConfig.versionName}_Play.aab" }
 }
 
 dependencies {

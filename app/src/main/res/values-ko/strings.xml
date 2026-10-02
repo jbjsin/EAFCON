@@ -1,5 +1,4 @@
 <resources>
-    <string name="app_name">EAFCON</string>
     <string name="page_connection">연결</string>
     <string name="page_control">제어</string>
     <string name="page_settings">설정</string>
