@@ -102,14 +102,6 @@
     <string name="action_delete">Delete</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_cancel_upper">CANCEL</string>
-    <string name="import_presets_title">Import %d presets?</string>
-    <string name="import_merge_note">The file is valid. Merge updates matching IDs and appends new IDs.</string>
-    <string name="import_no_move_note">Import does not move the focuser.</string>
-    <string name="action_merge">Merge</string>
-    <string name="action_replace_ellipsis">Replace…</string>
-    <string name="replace_presets_title">Replace all presets?</string>
-    <string name="replace_presets_message">This removes all saved presets and replaces them with the imported file.</string>
-    <string name="action_replace_all">Replace all</string>
     <string name="serial_error">Serial error: %s</string>
 
     <string name="message_usb_detached">USB device detached; focuser disconnected</string>
@@ -135,9 +127,7 @@
     <string name="message_preset_saved">Preset \'%s\' saved</string>
     <string name="message_preset_loaded">%s loaded into Target Position</string>
     <string name="message_exported_presets">Exported %d presets</string>
-    <string name="message_validated_presets">Validated %d presets. Choose how to apply them.</string>
-    <string name="message_merged_presets">Merged %d presets</string>
-    <string name="message_replaced_presets">Replaced presets with %d imported presets</string>
+    <string name="message_merged_presets">Imported and merged %d presets into Preset.json</string>
     <string name="message_current_position_unknown">Current position is unknown</string>
     <string name="message_connect_first">Connect to a focuser first</string>
     <string name="message_focuser_not_idle">Focuser is not idle</string>

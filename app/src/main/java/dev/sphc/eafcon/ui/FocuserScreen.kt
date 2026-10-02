@@ -94,14 +94,8 @@ private fun localizedRuntimeMessage(raw: String): String {
     Regex("^Exported (\\d+) presets$").matchEntire(raw)?.let {
         return stringResource(R.string.message_exported_presets, it.groupValues[1].toInt())
     }
-    Regex("^Validated (\\d+) presets\\. Choose how to apply them\\.$").matchEntire(raw)?.let {
-        return stringResource(R.string.message_validated_presets, it.groupValues[1].toInt())
-    }
-    Regex("^Merged (\\d+) presets$").matchEntire(raw)?.let {
+    Regex("^Imported and merged (\\d+) presets$").matchEntire(raw)?.let {
         return stringResource(R.string.message_merged_presets, it.groupValues[1].toInt())
-    }
-    Regex("^Replaced presets with (\\d+) imported presets$").matchEntire(raw)?.let {
-        return stringResource(R.string.message_replaced_presets, it.groupValues[1].toInt())
     }
     return when (raw) {
         "USB device detached; focuser disconnected" -> stringResource(R.string.message_usb_detached)
@@ -156,7 +150,6 @@ fun FocuserScreen(
     var presetPosition by rememberSaveable { mutableStateOf("") }
     var presetEditorError by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<PositionPreset?>(null) }
-    var confirmReplace by rememberSaveable { mutableStateOf(false) }
     val canMove = focuser.connected && focuser.movement == MovementState.IDLE &&
         !focuser.commandPending && focuser.currentPosition != null && focuser.softwareMaximum != null
 
@@ -189,10 +182,6 @@ fun FocuserScreen(
             lastPrimaryPageName = AppPage.CONTROL.name
         }
     }
-    LaunchedEffect(ui.pendingImportPresets) {
-        if (ui.pendingImportPresets == null) confirmReplace = false
-    }
-
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri -> if (uri != null) viewModel.exportPresets(uri) }
@@ -318,8 +307,6 @@ fun FocuserScreen(
             },
             onDelete = { deleteTarget = ui.presets.firstOrNull { it.id == selectedPresetId } },
             onImport = {
-                confirmReplace = false
-                viewModel.cancelPresetImport()
                 importLauncher.launch(arrayOf("application/json", "text/json", "*/*"))
             },
             onExport = { exportLauncher.launch("EAFCon_Presets.json") },
@@ -342,40 +329,6 @@ fun FocuserScreen(
         )
     }
 
-    if (!confirmReplace) ui.pendingImportPresets?.let { imported ->
-        AlertDialog(
-            onDismissRequest = viewModel::cancelPresetImport,
-            title = { Text(stringResource(R.string.import_presets_title, imported.size)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(stringResource(R.string.import_merge_note))
-                    Text(stringResource(R.string.import_no_move_note))
-                }
-            },
-            confirmButton = { TextButton(onClick = viewModel::mergeImportedPresets) { Text(stringResource(R.string.action_merge)) } },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { confirmReplace = true }) { Text(stringResource(R.string.action_replace_ellipsis)) }
-                    TextButton(onClick = viewModel::cancelPresetImport) { Text(stringResource(R.string.action_cancel)) }
-                }
-            },
-        )
-    }
-
-    if (confirmReplace && ui.pendingImportPresets != null) {
-        AlertDialog(
-            onDismissRequest = { confirmReplace = false },
-            title = { Text(stringResource(R.string.replace_presets_title)) },
-            text = { Text(stringResource(R.string.replace_presets_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.replaceWithImportedPresets()
-                    confirmReplace = false
-                }) { Text(stringResource(R.string.action_replace_all)) }
-            },
-            dismissButton = { TextButton(onClick = { confirmReplace = false }) { Text(stringResource(R.string.action_cancel)) } },
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -4,16 +4,16 @@
 
 Use Android Studio with JDK 17, Android SDK Platform 36, and the Gradle/Android Gradle Plugin versions pinned by the repository. The local SDK path belongs in ignored `local.properties`.
 
-EAFCON 1.1.4 uses:
+EAFCON 1.1.5 uses:
 
 - Namespace and application ID: `dev.sphc.eafcon`
 - `minSdk = 26`
 - `compileSdk = 36`
 - `targetSdk = 36`
-- `versionCode = 9`
-- `versionName = 1.1.4`
+- `versionCode = 10`
+- `versionName = 1.1.5`
 
-The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.4 as a separate application rather than an in-place update of those builds. It updates 1.1.1 through 1.1.3 when the APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
+The package ID was finalized before the first Google Play publication. It differs from early development builds (`com.astrophoto.geminifocuser`), so Android treats 1.1.5 as a separate application rather than an in-place update of those builds. It updates 1.1.1 through 1.1.4 when the APKs use the same signing key. Kotlin sources and tests use the matching `dev/sphc/eafcon` directory tree.
 
 The project uses Kotlin, Jetpack Compose, AndroidX Lifecycle, Coroutines, and `usb-serial-for-android` 3.11.0. The serial dependency is published through JitPack, supports CH340/CH341 devices, and is MIT licensed; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -27,7 +27,7 @@ From PowerShell at the repository root:
 .\gradlew.bat :app:bundleRelease
 ```
 
-Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.4.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
+Unix equivalents use `./gradlew`. The debug APK is normally written to `app/build/outputs/apk/debug/EAFCON_1.1.5.apk`. The release App Bundle is normally written to `app/build/outputs/bundle/release/app-release.aab`.
 
 - A debug APK is signed with the local Android debug key and is intended for development/testing.
 - A release APK is an installable release-mode package, but this project does not currently define a production signing configuration.
@@ -54,7 +54,7 @@ The established boundaries remain:
 
 `Android USB discovery/permission → SerialTransport → GeminiProtocol → FocuserController → ViewModel → Compose UI`
 
-`usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `protocol/` owns canonical commands and `#`-terminated parsing without Android dependencies. `control/` owns polling, trusted state, serialization, and movement safety. `presets/` owns the portable position model, validation, versioned JSON, and SharedPreferences persistence. `settings/` owns serial profile models, validation, versioned JSON, bundled defaults, and private persistence. `ui/` owns ViewModel orchestration, navigation, themes, and Compose rendering.
+`usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `protocol/` owns canonical commands and `#`-terminated parsing without Android dependencies. `control/` owns polling, trusted state, serialization, and movement safety. `presets/` owns the portable position model, validation, versioned JSON, and app-private file persistence. `settings/` owns serial profile models, validation, versioned JSON, bundled defaults, and private persistence. `ui/` owns ViewModel orchestration, navigation, themes, and Compose rendering.
 
 The Compose UI has separate Connection, Control, and Settings pages. Connection and Control are primary pages always available from a persistent top switcher; all pages remain available from the top-right menu. Secondary menu pages retain the primary page that was active when entered. Android Back on a secondary page returns to that Connection/Control page rather than finishing the Activity, providing the same behavior for future secondary menu destinations. A compact connection indicator remains outside page scrolling and also shows position, temperature, and movement state so short screens retain essential telemetry while the movement controls are visible. Theme selection cycles among Light, low-glare Dark, and red-only Night Vision and is stored privately. The Night Vision color scheme explicitly defines every Material surface-container role as black or dark burgundy so cards and disabled controls never fall back to gray. Position presets appear only in a dialog: Load fills Target Position; Save has explicit New/Create and Edit/Update states.
 
@@ -102,7 +102,7 @@ Controller polling uses the IO dispatcher while remaining a child of `viewModelS
 
 ## Position presets
 
-`PositionPreset` stores an ID, user name, and integer position. `PositionPresetStore` persists one versioned JSON document in private SharedPreferences (`position_presets_v1`). No database framework is required.
+`PositionPreset` stores an ID, user name, and integer position. On first app launch, `PositionPresetStore` atomically creates `filesDir/Preset.json` with the stable-ID preset `Default System` at position `7500`. Android does not execute application code at package-install time, so initialization happens when EAFCON first starts. Updates from versions that used private SharedPreferences migrate the existing `position_presets_v1` document into `Preset.json` before removing the legacy entry. No database framework is required.
 
 Export/import uses the Storage Access Framework through `CreateDocument` and `OpenDocument`. Format version 1 is:
 
@@ -116,7 +116,9 @@ Export/import uses the Storage Access Framework through `CreateDocument` and `Op
 }
 ```
 
-Import is limited to 1 MB and 500 entries. It parses and validates the complete document into a temporary list before offering Merge or Replace. Merge updates matching IDs and appends new IDs; duplicate names with different IDs remain separate. Replace requires a second confirmation. Failed validation does not mutate stored data. USB paths, IDs, and enumeration values are never stored as preset identity. Schema changes require an explicit version/migration path.
+Import is limited to 1 MB and 500 entries. The file picker selection is parsed and validated completely before it is applied. Import always merges into app-private `Preset.json`: matching IDs are updated, new IDs are appended, and duplicate names with different IDs remain separate. The merged document is written atomically; failed validation or a write failure does not replace the stored file. USB paths, IDs, and enumeration values are never stored as preset identity. Schema changes require an explicit version/migration path.
+
+`android:allowBackup="true"` remains enabled and no preset-specific exclusion rule is configured. Android Auto Backup therefore includes both `filesDir/Preset.json` and SharedPreferences by default. Uninstalling and reinstalling the same application ID can restore previous presets before first launch; a restored legacy `position_presets_v1` value is then migrated into `Preset.json`. For a clean-install test, clear EAFCON storage after installation and before launch, or run `adb shell pm clear dev.sphc.eafcon`. Whether presets should remain backed up or receive an explicit reset/exclusion policy is a future product decision.
 
 Selecting a preset only copies its position to Target Position. Preset CRUD and import/export issue no hardware commands. The existing GO/controller path performs the final safety validation and movement.
 
@@ -148,6 +150,8 @@ The field test used Gemini and a same-VID/PID SeRelCam relay with EAFCON disconn
 
 On 2026-10-01, after the language, card-grouped Settings, five-level movement vibration, and secondary-page Back navigation changes, `:app:testDebugUnitTest`, `:app:assembleDebug`, `:app:bundleRelease`, and `:app:lintDebug` completed successfully with JDK 17 and Android SDK 36; release lint-vital also passed. All 44 JVM tests passed, including four primary/secondary navigation cases and five vibration-level/migration/effect-key cases. Release build metadata is `dev.sphc.eafcon`, version code 9, and version name 1.1.4. Production upload signing remains intentionally unconfigured. Preview/continuous vibration timing, hardware amplitude differences, lifecycle cancellation, and physical Android Back-key behavior still require on-device regression testing.
 
+On 2026-10-02, after moving preset persistence to app-private `Preset.json`, adding the first-run `Default System`/`7500` entry, migrating legacy SharedPreferences, and defining Import as validated atomic merge, 46 JVM tests passed. The debug APK, release AAB, debug lint, and release lint-vital completed successfully with release metadata `dev.sphc.eafcon`, version code 10, and version name 1.1.5. Production upload signing remains intentionally unconfigured.
+
 ## Verification model
 
 ### VERIFIED — historical physical Gemini results
@@ -173,13 +177,13 @@ On 2026-10-01, after the language, card-grouped Settings, five-level movement vi
 - RTS/DTR requirements on other hardware.
 - Safe automatic Gemini identification.
 - Commands that change device maximum; EAFCON does not send one.
-- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.4 Android build.
+- USB detach/reconnect stabilization and remaining multi-device behavior on the exact 1.1.5 Android build.
 - Whether a sufficiently powered hub, separate Gemini power applied before USB, or a different hub/cable prevents the whole-bus reset during Gemini insertion.
-- Preset behavior on the exact 1.1.4 Android build until manually tested.
+- Preset behavior on the exact 1.1.5 Android build until manually tested.
 
-Historical verification does not mean the exact 1.1.4 build has completed regression testing.
+Historical verification does not mean the exact 1.1.5 build has completed regression testing.
 
-## 1.1.4 hardware regression checklist
+## 1.1.5 hardware regression checklist
 
 - [ ] Detect the Gemini CH34x and distinguish it from another matching VID/PID device.
 - [ ] Grant USB permission and connect at 9600 8N1.
@@ -191,7 +195,7 @@ Historical verification does not mean the exact 1.1.4 build has completed regres
 - [ ] Perform a longer move and observe `I1#`.
 - [ ] Press STOP during the long move; confirm `I1#` → STOP → `I0#` and final `:00#` position.
 - [ ] Detach USB while connected and confirm disconnection/error state and command blocking.
-- [ ] Confirm preset create/edit/delete, restart persistence, JSON export, Merge, confirmed Replace, and failure rollback.
+- [ ] Confirm first-launch `Preset.json` creation (`Default System`, `7500`), legacy migration, preset create/edit/delete, restart persistence, JSON export, import merge, and failure rollback.
 - [ ] Run Scan while another app owns a USB serial device and confirm the other connection is unaffected.
 - [ ] With Gemini and the SeRelCam relay listed but disconnected, remove/reinsert the relay and confirm only that entry changes.
 - [ ] Remove/reinsert Gemini while the relay remains attached and confirm the relay never disappears permanently.

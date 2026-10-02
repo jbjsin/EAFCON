@@ -52,7 +52,6 @@ data class FocuserUiState(
     val demoMode: Boolean = false,
     val message: String? = null,
     val presets: List<PositionPreset> = emptyList(),
-    val pendingImportPresets: List<PositionPreset>? = null,
     val connectionProfile: ConnectionProfile,
 )
 
@@ -406,36 +405,18 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
                 val imported = PresetJsonCodec.decode(String(bytes, StandardCharsets.UTF_8))
                 val limits = mutableState.value.focuser
                 imported.forEach { PresetRules.validatePosition(it.position, limits.softwareMaximum, limits.deviceMaximum) }
-                mutableState.update {
-                    it.copy(pendingImportPresets = imported, message = "Validated ${imported.size} presets. Choose how to apply them.")
+                val merged = PresetRules.merge(mutableState.value.presets, imported)
+                withContext(Dispatchers.IO) {
+                    presetStore.save(merged)
                 }
+                mutableState.update { it.copy(presets = merged, message = "Imported and merged ${imported.size} presets") }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 val message = (error as? PresetFileException)?.message ?: error.message ?: "Preset import failed"
-                mutableState.update { it.copy(pendingImportPresets = null, message = message) }
+                mutableState.update { it.copy(message = message) }
             }
         }
-    }
-
-    fun mergeImportedPresets() {
-        val imported = mutableState.value.pendingImportPresets ?: return
-        runCatching {
-            val merged = PresetRules.merge(mutableState.value.presets, imported)
-            persistPresets(merged)
-            mutableState.update { it.copy(pendingImportPresets = null, message = "Merged ${imported.size} presets") }
-        }.onFailure { error -> mutableState.update { it.copy(message = error.message ?: "Unable to merge presets") } }
-    }
-
-    fun replaceWithImportedPresets() {
-        val imported = mutableState.value.pendingImportPresets ?: return
-        runCatching { persistPresets(imported) }
-            .onSuccess { mutableState.update { it.copy(pendingImportPresets = null, message = "Replaced presets with ${imported.size} imported presets") } }
-            .onFailure { error -> mutableState.update { it.copy(message = error.message ?: "Unable to replace presets") } }
-    }
-
-    fun cancelPresetImport() {
-        mutableState.update { it.copy(pendingImportPresets = null) }
     }
 
     private fun validatePresetPosition(position: Int) {

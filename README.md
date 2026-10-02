@@ -16,7 +16,7 @@ EAFCON is an Android USB serial controller for manual electronic focuser operati
 - Light, low-glare dark, and red-only night-vision themes.
 - In-app English/Korean language selection, saved across launches and applied to navigation, controls, dialogs, guidance, and common operation messages.
 - Optional foreground vibration while the focuser reports MOVING, with persistent five-level strength selection at 10/30/50/70/90% of Android's maximum amplitude. Selecting a level gives a short preview pulse; movement vibration cancels when movement ends, USB disconnects, or EAFCON leaves the foreground.
-- Named position presets in a dedicated dialog, with distinct Load, Create, and Edit flows plus portable JSON import/export through Android's file picker.
+- Named position presets in a dedicated dialog, with distinct Load, Create, and Edit flows plus portable JSON import/export through Android's file picker. First launch creates private `Preset.json` with `Default System` at position `7500`.
 - Editable baud rate, data bits, stop bits, parity, flow control, and timeout values loaded from a versioned JSON connection profile.
 - Demo mode for exercising the UI without hardware.
 - STOP button while moving. STOP uses the source-backed MyFocuserPro2 `:27#` abort command; physical STOP behavior on the Gemini EAF remains to be explicitly verified.
@@ -31,7 +31,9 @@ EAFCON is an Android USB serial controller for manual electronic focuser operati
 5. Enter a target or use a relative control. Custom steps use the centered step value with the adjacent −/+ movement buttons.
 6. Tap **Disconnect** on the Connection page when finished.
 
-Preset selection only fills **Target Position**. Preset CRUD and JSON import/export never move hardware. Import validates the complete file before offering Merge or confirmed Replace.
+Preset selection only fills **Target Position**. Preset CRUD and JSON import/export never move hardware. Import validates the complete selected file, then merges matching IDs and appends new IDs into the app-private `Preset.json`; a failed import leaves the stored document unchanged.
+
+Android Auto Backup is enabled. Reinstalling EAFCON with the same application ID can restore `Preset.json` or legacy preset preferences from the Android backup service instead of starting with only the default preset. Use Android's Clear storage action when a completely fresh local state is required.
 
 The Settings page edits the active serial profile and applies it only to the next connection. The bundled `Gemini / MyFocuserPro2` profile contains the verified 9600 8N1 settings. Connection profile selection/import is not exposed yet; the underlying versioned JSON catalog is present for future model expansion. Changing serial parameters does not add another focuser protocol, so compatibility beyond MyFocuserPro2 remains unverified.
 
@@ -50,9 +52,9 @@ These historical results do not replace regression testing for each release. The
 
 ## Android and builds
 
-EAFCON 1.1.4 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.4.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
+EAFCON 1.1.5 uses application ID `dev.sphc.eafcon`, requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The debug APK is named `EAFCON_1.1.5.apk`. Developer setup, App Bundle creation, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
 
-The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.4 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1 through 1.1.3, when signed with the same key.
+The Google Play listing is not published yet. The final application ID has been selected, and Play release preparation is in progress. Because the application ID changed from early development builds, 1.1.5 installs as a different Android application rather than updating an older `com.astrophoto.geminifocuser` installation. It updates builds that already use `dev.sphc.eafcon`, including 1.1.1 through 1.1.4, when signed with the same key.
 
 ## Development progress
 
@@ -61,7 +63,7 @@ The Google Play listing is not published yet. The final application ID has been 
 - USB serial discovery, manual selection, permission, connect, and disconnect.
 - Gemini handshake, position, movement, temperature, and device maximum display.
 - Software safety limit, absolute movement, fixed/custom relative movement, and Demo mode.
-- Persistent position presets with atomic versioned JSON import/export.
+- Persistent position presets in app-private `Preset.json`, with first-run defaults and atomic versioned JSON import/export/merge.
 - Connection/Control/Settings navigation, popup-only preset management, and persistent Light/Dark/Night Vision themes.
 - Persistent English/Korean interface selection on the Settings page.
 - Card-grouped Settings sections for interface, movement vibration, serial connection, and compatibility guidance.
