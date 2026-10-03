@@ -12,8 +12,8 @@ android {
         applicationId = "dev.sphc.eafcon"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "1.1.6"
+        versionCode = 15
+        versionName = "1.2.2.1"
 
     }
 
@@ -23,14 +23,19 @@ android {
             dimension = "distribution"
             applicationIdSuffix = ".dev"
             resValue("string", "app_name", "EAFCON Dev")
+            buildConfigField("boolean", "ENABLE_UNVERIFIED_DEVICE_MAX_WRITE", "true")
+            buildConfigField("boolean", "ENABLE_UNVERIFIED_PROTOCOL_WRITES", "true")
         }
         create("prod") {
             dimension = "distribution"
+            buildConfigField("boolean", "ENABLE_UNVERIFIED_DEVICE_MAX_WRITE", "false")
+            buildConfigField("boolean", "ENABLE_UNVERIFIED_PROTOCOL_WRITES", "false")
         }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     bundle {

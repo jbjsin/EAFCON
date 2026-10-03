@@ -11,8 +11,17 @@ import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.sphc.eafcon.BuildConfig
 import dev.sphc.eafcon.control.FocuserController
 import dev.sphc.eafcon.control.FocuserState
+import dev.sphc.eafcon.control.PositionSyncRequirementStore
+import dev.sphc.eafcon.driver.CapabilityId
+import dev.sphc.eafcon.driver.CapabilityValue
+import dev.sphc.eafcon.driver.FeatureCategory
+import dev.sphc.eafcon.driver.CapabilityAccess
+import dev.sphc.eafcon.driver.FocuserType
+import dev.sphc.eafcon.driver.MyFocuserPro2Driver
+import dev.sphc.eafcon.settings.TemperatureDisplayUnit
 import dev.sphc.eafcon.presets.PositionPreset
 import dev.sphc.eafcon.presets.PositionPresetStore
 import dev.sphc.eafcon.presets.PresetFileException
@@ -22,6 +31,7 @@ import dev.sphc.eafcon.settings.ConnectionProfile
 import dev.sphc.eafcon.settings.ConnectionProfileCatalog
 import dev.sphc.eafcon.settings.ConnectionProfileRules
 import dev.sphc.eafcon.settings.ConnectionProfileStore
+import dev.sphc.eafcon.settings.FocuserTypeStore
 import dev.sphc.eafcon.settings.SerialParameters
 import dev.sphc.eafcon.usb.UsbSerialDevice
 import dev.sphc.eafcon.usb.UsbSerialDeviceRepository
@@ -52,6 +62,12 @@ data class FocuserUiState(
     val demoMode: Boolean = false,
     val message: String? = null,
     val presets: List<PositionPreset> = emptyList(),
+    val capabilities: dev.sphc.eafcon.driver.CapabilitySet? = null,
+    val advancedValues: Map<CapabilityId, CapabilityValue> = emptyMap(),
+    val advancedErrors: Map<CapabilityId, String> = emptyMap(),
+    val advancedLoading: Boolean = false,
+    val temperatureDisplayUnit: TemperatureDisplayUnit = TemperatureDisplayUnit.CELSIUS,
+    val focuserType: FocuserType = FocuserType.GEMINI_FOCUSER_PRO,
     val connectionProfile: ConnectionProfile,
 )
 
@@ -59,15 +75,31 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
     private val repository = UsbSerialDeviceRepository(application)
     private val presetStore = PositionPresetStore(application)
     private val connectionProfileStore = ConnectionProfileStore(application)
+    private val focuserTypeStore = FocuserTypeStore(application)
+    private val displayPreferences = application.getSharedPreferences("eafcon_display_settings", Context.MODE_PRIVATE)
     private var connectionProfileCatalog: ConnectionProfileCatalog = connectionProfileStore.load()
+    private val adminStatePreferences = application.getSharedPreferences("eafcon_admin_state", Context.MODE_PRIVATE)
+    private val positionSyncStore = object : PositionSyncRequirementStore {
+        override fun isRequired(): Boolean = adminStatePreferences.getBoolean(KEY_POSITION_SYNC_REQUIRED, false)
+        override fun setRequired(required: Boolean) {
+            check(adminStatePreferences.edit().putBoolean(KEY_POSITION_SYNC_REQUIRED, required).commit()) {
+                "Unable to persist the position synchronization safety state"
+            }
+        }
+    }
     // Keep polling bound to ViewModel lifetime while allowing onCleared() to join it without
     // blocking the Main dispatcher that normally backs viewModelScope.
     private val controller = FocuserController(
         CoroutineScope(viewModelScope.coroutineContext + Dispatchers.IO),
+        positionSyncStore = positionSyncStore,
     )
     private val mutableState = MutableStateFlow(
         FocuserUiState(
             presets = runCatching { presetStore.load() }.getOrDefault(emptyList()),
+            temperatureDisplayUnit = runCatching {
+                TemperatureDisplayUnit.valueOf(displayPreferences.getString(KEY_TEMPERATURE_UNIT, null) ?: "CELSIUS")
+            }.getOrDefault(TemperatureDisplayUnit.CELSIUS),
+            focuserType = focuserTypeStore.load(),
             connectionProfile = connectionProfileCatalog.defaultProfile(),
         ),
     )
@@ -111,7 +143,12 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
             controller.state.collect { focuser ->
                 if (!focuser.connected) connectedDeviceId = null
                 mutableState.update {
-                    it.copy(focuser = focuser, demoMode = if (!focuser.connected) false else it.demoMode)
+                    it.copy(
+                        focuser = focuser,
+                        demoMode = if (!focuser.connected) false else it.demoMode,
+                        capabilities = controller.capabilities,
+                        advancedValues = if (!focuser.connected) emptyMap() else it.advancedValues,
+                    )
                 }
             }
         }
@@ -202,7 +239,11 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
                 val transport = withContext(Dispatchers.IO) {
                     repository.open(selected.usbDevice, serialParameters)
                 }
-                controller.connect(transport)
+                controller.connect(MyFocuserPro2Driver(
+                    focuserType = mutableState.value.focuserType,
+                    enableUnverifiedDeviceMaximumWrite = BuildConfig.ENABLE_UNVERIFIED_DEVICE_MAX_WRITE,
+                    enableUnverifiedProtocolWrites = BuildConfig.ENABLE_UNVERIFIED_PROTOCOL_WRITES,
+                ) { transport })
                 connectedDeviceId = selected.usbDevice.deviceId
                 mutableState.update { it.copy(demoMode = false, message = "Connected to ${selected.name}") }
             } catch (cancelled: CancellationException) {
@@ -220,7 +261,11 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             mutableState.update { it.copy(isWorking = true, message = "Starting simulated focuser…") }
             try {
-                controller.connect(FakeSerialTransport())
+                controller.connect(MyFocuserPro2Driver(
+                    focuserType = mutableState.value.focuserType,
+                    enableUnverifiedDeviceMaximumWrite = BuildConfig.ENABLE_UNVERIFIED_DEVICE_MAX_WRITE,
+                    enableUnverifiedProtocolWrites = BuildConfig.ENABLE_UNVERIFIED_PROTOCOL_WRITES,
+                ) { FakeSerialTransport() })
                 connectedDeviceId = null
                 mutableState.update { it.copy(demoMode = true, message = "Demo mode: simulated focuser at 7500 steps") }
             } catch (cancelled: CancellationException) {
@@ -238,6 +283,99 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
             controller.disconnect()
             connectedDeviceId = null
             mutableState.update { it.copy(demoMode = false, message = "Disconnected") }
+        }
+    }
+
+    fun selectFocuserType(type: FocuserType) {
+        if (mutableState.value.focuser.connected || mutableState.value.isWorking) {
+            mutableState.update { it.copy(message = "Disconnect before changing the focuser type") }
+            return
+        }
+        runCatching { focuserTypeStore.save(type) }
+            .onSuccess { mutableState.update { it.copy(focuserType = type, message = "Focuser type set to ${type.displayName}") } }
+            .onFailure { error -> mutableState.update { it.copy(message = error.message ?: "Unable to save focuser type") } }
+    }
+
+    fun refreshAdvancedSettings() {
+        refreshSettings(FeatureCategory.ADVANCED)
+    }
+
+    fun refreshSettings(category: FeatureCategory) {
+        viewModelScope.launch {
+            if (!mutableState.value.focuser.connected) return@launch
+            val available = controller.capabilities?.available(category)
+                ?.filter { it.unavailableReason == null }
+                ?.filter { it.access != CapabilityAccess.WRITE_ONLY }
+                .orEmpty()
+            mutableState.update { it.copy(advancedLoading = true, advancedErrors = emptyMap()) }
+            val values = mutableMapOf<CapabilityId, CapabilityValue>()
+            val errors = mutableMapOf<CapabilityId, String>()
+            for (descriptor in available) {
+                try {
+                    values[descriptor.id] = controller.readCapability(descriptor.id, category)
+                } catch (error: Exception) {
+                    errors[descriptor.id] = error.message ?: "Unable to read ${descriptor.id}"
+                }
+            }
+            val controllerTemperatureUnit = (values[CapabilityId.TEMPERATURE_UNIT] as? CapabilityValue.ChoiceValue)
+                ?.value
+                ?.let(TemperatureDisplayUnit::fromControllerValue)
+            if (controllerTemperatureUnit != null && !persistTemperatureDisplayUnit(controllerTemperatureUnit)) {
+                errors[CapabilityId.TEMPERATURE_UNIT] = "Unable to save temperature display preference"
+            }
+            mutableState.update {
+                it.copy(
+                    advancedLoading = false,
+                    advancedValues = values,
+                    advancedErrors = errors,
+                    temperatureDisplayUnit = controllerTemperatureUnit ?: it.temperatureDisplayUnit,
+                )
+            }
+        }
+    }
+
+    fun updateAdvancedSetting(id: CapabilityId, value: CapabilityValue) {
+        updateCapability(id, value, FeatureCategory.ADVANCED)
+    }
+
+    fun updateCapability(id: CapabilityId, value: CapabilityValue, category: FeatureCategory) {
+        viewModelScope.launch {
+            try {
+                val result = controller.writeCapability(id, value, category)
+                val message = when {
+                    category == FeatureCategory.DEVICE_ADMINISTRATION -> "Device administration command sent; completion is not confirmed"
+                    id == CapabilityId.HOME -> "Home command sent; the protocol provides no completion acknowledgment"
+                    id == CapabilityId.TEMPERATURE_UNIT -> "Controller temperature unit confirmed"
+                    id == CapabilityId.STEP_MODE -> "Step Mode confirmed; sync the position before moving"
+                    id == CapabilityId.SYNC_POSITION -> "Logical position synchronized"
+                    id == CapabilityId.SET_MAX_POSITION -> "Device maximum confirmed"
+                    else -> "$id setting confirmed"
+                }
+                val controllerTemperatureUnit = if (id == CapabilityId.TEMPERATURE_UNIT) {
+                    (result as? CapabilityValue.ChoiceValue)
+                        ?.value
+                        ?.let(TemperatureDisplayUnit::fromControllerValue)
+                } else {
+                    null
+                }
+                val temperaturePreferenceSaved = controllerTemperatureUnit?.let(::persistTemperatureDisplayUnit) ?: true
+                mutableState.update {
+                    it.copy(
+                        advancedValues = if (result == CapabilityValue.TriggerValue) it.advancedValues else it.advancedValues + (id to result),
+                        advancedErrors = if (temperaturePreferenceSaved) {
+                            it.advancedErrors - id
+                        } else {
+                            it.advancedErrors + (id to "Unable to save temperature display preference")
+                        },
+                        temperatureDisplayUnit = controllerTemperatureUnit ?: it.temperatureDisplayUnit,
+                        message = message,
+                    )
+                }
+            } catch (error: Exception) {
+                mutableState.update {
+                    it.copy(advancedErrors = it.advancedErrors + (id to (error.message ?: "Setting failed")))
+                }
+            }
         }
     }
 
@@ -455,5 +593,10 @@ class FocuserViewModel(application: Application) : AndroidViewModel(application)
     private companion object {
         const val USB_TOPOLOGY_SETTLE_MS = 300L
         const val USB_EMPTY_RETRY_MS = 500L
+        const val KEY_POSITION_SYNC_REQUIRED = "position_sync_required_after_step_mode"
+        const val KEY_TEMPERATURE_UNIT = "temperature_display_unit"
     }
+
+    private fun persistTemperatureDisplayUnit(unit: TemperatureDisplayUnit): Boolean =
+        displayPreferences.edit().putString(KEY_TEMPERATURE_UNIT, unit.name).commit()
 }

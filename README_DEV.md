@@ -4,7 +4,7 @@
 
 Use Android Studio with JDK 17, Android SDK Platform 36, and the Gradle/Android Gradle Plugin versions pinned by the repository. The local SDK path belongs in ignored `local.properties`.
 
-The current unreleased EAFCON 1.1.6 source uses:
+EAFCON 1.2.2.1 uses:
 
 - Shared namespace: `dev.sphc.eafcon`
 - Production application ID / label: `dev.sphc.eafcon` / `EAFCON`
@@ -12,8 +12,8 @@ The current unreleased EAFCON 1.1.6 source uses:
 - `minSdk = 26`
 - `compileSdk = 36`
 - `targetSdk = 36`
-- `versionCode = 11`
-- `versionName = 1.1.6`
+- `versionCode = 15`
+- `versionName = 1.2.2.1`
 
 The `distribution` flavor dimension produces only `devDebug` and `prodRelease`; unused `devRelease` and `prodDebug` variants are disabled. Both variants share the same Kotlin source tree, versionName, versionCode, and release commit. Do not maintain separate source branches merely to change package identity, label, signing, or artifact type.
 
@@ -34,12 +34,12 @@ From PowerShell at the repository root:
 
 Unix equivalents use `./gradlew`. Key outputs are:
 
-- GitHub Development APK: `app/build/outputs/apk/dev/debug/EAFCON_Dev_1.1.6.apk`
+- GitHub Development APK: `app/build/outputs/apk/dev/debug/EAFCON_Dev_1.2.2.1.apk`
 - Raw Production bundle: `app/build/outputs/bundle/prodRelease/app-prod-release.aab`
-- Locally archived Production bundle: `app/build/outputs/distribution/EAFCON_1.1.6_Play.aab`
+- Locally archived Production bundle: `app/build/outputs/distribution/EAFCON_1.2.2.1_Play.aab`
 
 - `devDebug` is signed with the local Android debug key and is intended for GitHub development/field testing.
-- `prodRelease` is the Google Play source artifact. Production upload signing is not configured, so the current AAB must not be described as Play-upload-ready.
+- `prodRelease` is the Google Play source artifact. Gradle produces it without repository-bound credentials; the canonical release process post-signs the archived AAB with the dedicated external upload key and verifies that signature before the file is described as Play-upload-ready.
 - An AAB is not directly installed like an APK; Google Play generates optimized APKs from it.
 
 `versionCode` must increase for every build uploaded to Google Play, even when the user-facing `versionName` is unchanged. Google Play publication is still pending and this repository has no deployment workflow.
@@ -56,7 +56,7 @@ Pre-Play releases through 1.1.5 used `dev.sphc.eafcon` with a development/debug 
 
 ## Google Play signing preparation
 
-Use Google Play App Signing for publication. Create and protect the upload key outside the repository. Never commit a keystore, passwords, signing property files, or credentials. If Gradle signing is wired later, read secrets from ignored local Gradle properties or environment variables and make their absence fail clearly only for signed release tasks. Do not create placeholder production credentials.
+Use Google Play App Signing for publication. Protect the upload key outside the repository. Never commit a keystore, passwords, signing property files, or credentials. The current local release workflow decrypts the separately stored password only in memory, passes it to signing tools through a temporary environment variable, post-signs the archived AAB, and clears the variable immediately. Do not print the password or inject it into command arguments, logs, manifests, or Git.
 
 Before a Play upload:
 
@@ -69,11 +69,21 @@ Before a Play upload:
 
 ## Architecture
 
-The established boundaries remain:
+The 1.2.x runtime boundaries are:
 
-`Android USB discovery/permission → SerialTransport → GeminiProtocol → FocuserController → ViewModel → Compose UI`
+`Android USB discovery/permission → driver-specific transport → MyFocuserPro2Driver → FocuserController → ViewModel → Compose UI`
 
-`usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `protocol/` owns canonical commands and `#`-terminated parsing without Android dependencies. `control/` owns polling, trusted state, serialization, and movement safety. `presets/` owns the portable position model, validation, versioned JSON, and app-private file persistence. `settings/` owns serial profile models, validation, versioned JSON, bundled defaults, and private persistence. `ui/` owns ViewModel orchestration, navigation, themes, and Compose rendering.
+`driver/FocuserDriver` owns the transport-neutral core contract. It has no USB, serial, baud/framing, ASCII, or delimiter API. `MyFocuserPro2Driver` is the serial-specific adapter; it owns `SerialTransport` usage and calls the pure Kotlin `MyFocuserPro2Protocol` command/response layer. `CapabilitySettingsDriver` is optional so unrelated future drivers do not need dummy functions. `control/` owns polling, trusted state, serialization, software movement limits, and category/idle/capability enforcement. `usb/` owns passive discovery, permission, the serial-library adapter, metadata formatting, and fake transport. `ui/` owns ViewModel orchestration, navigation, themes, and Compose rendering. Presets and settings retain their existing responsibilities.
+
+The formal command evidence and unresolved frames are in [docs/protocol/MYFOCUSERPRO2_PROTOCOL.md](docs/protocol/MYFOCUSERPRO2_PROTOCOL.md); the architecture/capability model and 1.2.x categories are in [docs/architecture/FOCUSER_DRIVER_ARCHITECTURE.md](docs/architecture/FOCUSER_DRIVER_ARCHITECTURE.md). Keep these classifications synchronized with this guide and `agent.md`.
+
+### Advanced, Administrative, and Device Administration boundaries
+
+The Advanced page exposes Reverse, Motor Speed, and Backlash IN/OUT. Writes require a connected, idle focuser, use bounded typed inputs, and are read back before UI state is treated as confirmed. Backlash is conservatively capped at 255 because the project user guide and INDI driver differ (0–255 versus 0–512). These commands are source-verified/hardware-unverified on Gemini.
+
+The Administrative page exposes source-backed Step Mode, Sync Position, Device Maximum, Coil Power, Home, display controls, controller C/F mode, and selected firmware settings. Step Mode changes coordinate scale and can invalidate the position; EAFCON persists a position-sync-required safety flag before sending the command, blocks movement and safety-limit changes, requires explicit logical-position sync, and requires a new software maximum before movement. Device Maximum write is enabled only in `devDebug`; the dedicated card validates the current position and active software limit before confirmation and controller readback. The UI requires confirmation, controller readback where available, idle state, and software-limit/current-position validation. Home may move the focuser and has no reliable completion acknowledgment. Administrative `°C`/`°F` uses `:16#`/`:17#`, reads back `:38#`, and is the sole temperature-unit control; it synchronizes the app's main temperature presentation and compensation-coefficient unit. Temperature compensation is available only in Dev with an autonomous-motion safety warning.
+
+The Device Administration page is capability-gated and requires explicit confirmation. Manufacturer console 2.1.0.0 and official firmware 338 establish EEPROM persistence `:48#`, reset `:40#`, and restore defaults `:42#`. Gemini physical testing reported that `:40#` and `:42#` both perform factory-reset behavior; exact raw response capture is unavailable. EAFCON therefore keeps `:40#` in the protocol catalog but hides the duplicate action, exposing only EEPROM save and factory reset in `devDebug`. `prodRelease` locks these high-risk writes. Firmware flashing remains outside scope.
 
 The Compose UI has separate Connection, Control, and Settings pages. Connection and Control are primary pages always available from a persistent top switcher; all pages remain available from the top-right menu. Secondary menu pages retain the primary page that was active when entered. Android Back on a secondary page returns to that Connection/Control page rather than finishing the Activity, providing the same behavior for future secondary menu destinations. A compact connection indicator remains outside page scrolling and also shows position, temperature, and movement state so short screens retain essential telemetry while the movement controls are visible. Theme selection cycles among Light, low-glare Dark, and red-only Night Vision and is stored privately. The Night Vision color scheme explicitly defines every Material surface-container role as black or dark burgundy so cards and disabled controls never fall back to gray. Position presets appear only in a dialog: Load fills Target Position; Save has explicit New/Create and Edit/Update states.
 
@@ -84,6 +94,8 @@ Settings are grouped into separate Interface, Movement vibration, Serial connect
 ## Serial connection profiles
 
 The app loads `app/src/main/assets/connection_profiles.json` through `ConnectionProfileStore`. User changes are validated, encoded with the same schema, and stored in private SharedPreferences as `connection_profiles_v1`. Invalid stored JSON falls back to the bundled asset. Settings cannot be changed while connected and are passed to `UsbSerialPortTransport` on the next explicit Connect.
+
+Focuser type is a separate persisted choice, not part of serial framing. `Gemini Focuser Pro` is the compatibility-preserving default; `MyFocuserPro2 Generic` follows the official firmware family. Selection is disabled while connected and applies to the next explicit Connect. Never infer this choice from VID/PID or temporary USB paths.
 
 Format version 1 is:
 
@@ -232,6 +244,53 @@ Historical verification does not mean the exact 1.1.6 builds have completed regr
 - [ ] Restart the app and verify vibration enabled state and selected level persist; confirm the default for a fresh install is Off/Level 3 and legacy Low/Medium/High preferences migrate to levels 2/3/5.
 - [ ] Change serial settings while disconnected, reconnect, then restore the bundled 9600 8N1 defaults.
 
+## EAFCON 1.2.0 Gemini manual regression checklist
+
+Run the existing 1.1.x checklist as applicable, then verify each newly exposed setting independently. Keep the focuser clear of mechanical end stops, choose conservative settings, and do not treat the app's STOP control as an emergency stop. Record firmware version only if obtained through an explicitly selected, user-triggered diagnostic; EAFCON does not automatically send the INDI `:03#` firmware query.
+
+- [ ] Open Advanced only after explicit connect; confirm only capabilities marked available for the selected driver are shown.
+- [ ] Refresh/read Reverse (`:13#` → `R0#`/`R1#`); toggle once and confirm `:14n#` then readback matches. Check physical direction only using an obviously safe small move afterward.
+- [ ] Read Motor Speed (`:43#` → `C0#`/`C1#`/`C2#`); change one level at a time with the focuser idle and confirm `:150n#` plus readback.
+- [ ] Read Backlash IN (`:74#`, `:78#`); with a conservative 0–255 value, change only the step count and confirm `:77n#` followed by readback.
+- [ ] Change Backlash IN enable separately; confirm `:73n#` and readback. Test compensation behavior only with a small safe reversing move.
+- [ ] Repeat separately for Backlash OUT (`:76#`, `:80#`, writes `:75n#`, `:79n#`).
+- [ ] Verify Advanced edits are blocked while MOVING and no write frame is emitted; verify the value is only shown as confirmed when readback equals the requested value.
+- [ ] Confirm a configured software maximum still blocks explicit movement beyond the limit when Reverse/Backlash are configured. Stop and reassess if any unexpected physical behavior occurs.
+- [ ] Do not test Step Mode, Sync Position, Set Device Maximum, Home, Coil Power, temperature compensation, persistence, reset, or restore-defaults from 1.2.0 UI; these are withheld or reserved for later milestones.
+
+All above newly introduced Advanced commands remain `SOURCE-VERIFIED / HARDWARE-UNVERIFIED` until the user records actual Gemini device, firmware if available, serial profile, exact TX/RX, and observed motion/settings after each individual operation. JVM tests and successful APK build do not change the verification state.
+
+## EAFCON 1.2.2 Gemini Administrative regression checklist
+
+First complete the applicable Connection/Control regression and the 1.2.0 Advanced checklist. Keep the focuser away from mechanical end stops. Test one setting at a time; record raw TX/RX and physical behavior. These operations are source-verified but not hardware-verified on Gemini. Do not treat STOP as an emergency stop.
+
+- [ ] Open Administration only after explicit connection; confirm actions are disabled while disconnected or MOVING.
+- [ ] Read Step Mode (`:29#` → `S<1|2|4|8|16|32|64|128|256>#`). Do not change it unless prepared to establish the correct logical coordinate again. If changed, confirm `:30<mode>#` then read back `:29#`.
+- [ ] After a Step Mode change, confirm Current Position becomes unknown, the safety maximum is cleared, movement and limit-setting are blocked, and the lock survives process termination and reconnect.
+- [ ] With the physical focuser position independently known, explicitly Sync Position (`:31<position>#`) and confirm EAFCON's `:00#` readback matches. Confirm movement remains blocked until a new software maximum is set.
+- [ ] Confirm position-sync-required state survives app restart and reconnect until successful explicit Sync Position; confirm syncing one value clears the lock only after the device position readback matches.
+- [ ] Test Device Maximum only from `devDebug`; Production intentionally keeps the command locked. Keep a large mechanical travel margin and a known current position, use a value above both current position and software limit, confirm the explicit warning, then verify the app reads the same value back with `:08#`. Stop if the device rejects the frame, moves unexpectedly, or reports a different maximum. Do not test this through Production.
+- [x] Read Coil Power (`:11#` → `O0#`/`O1#`): the physical Gemini reported `O0#` after connection. Firmware 338 defines `0` as energizing coils during movement and releasing them while idle; `1` keeps coils energized while idle for holding torque. The reported value is verified, but the physical torque/heat/power effects remain unverified. Test any change only with the focuser mechanically secured and a clear load path, then confirm `:12<0|1>#` with `:11#` readback.
+- [ ] Read display state (`:37#` → `D0#`/`D1#`), change once (`:36<0|1>#`), and confirm by reading `:37#`.
+- [ ] Change Settings → Temperature Display Unit between Celsius and Fahrenheit; confirm the displayed value converts from the same sensor reading and the selection persists after app restart. This is a local EAFCON display preference. The controller-side Celsius command `:16#` is a separate source-backed operation with no readback and is not invoked by these buttons.
+- [ ] Use Home (`:28#`) only when a correctly configured home switch is physically present and the travel path is clear. The protocol has no reliable acknowledgment; do not infer that the focuser reached home from command transmission. Record switch presence and observe position/movement independently.
+- [ ] Verify Home, coil, and other Administrative actions are rejected before transmission while the controller reports MOVING.
+- [ ] In Production, confirm EEPROM persist, reset, and restore defaults remain unavailable. In Development, do not execute them until the separate 1.2.2.1 characterization checklist and recovery preparation are complete.
+
+Until individually tested and recorded, all newly implemented Advanced, Administrative, and Device Administration commands remain `SOURCE-VERIFIED / HARDWARE-UNVERIFIED`. EEPROM persistence, reset, and restore-default frames are source-backed but high-risk and Dev-only; test them only with the checklist below.
+
+## EAFCON 1.2.2.1 Gemini characterization checklist
+
+- [ ] Select `Gemini Focuser Pro`, connect, and confirm core position/movement/temperature/maximum behavior is unchanged.
+- [ ] Disconnect, select `MyFocuserPro2 Generic`, reconnect only to known MyFocuserPro2-compatible hardware, and record firmware name/version.
+- [ ] Verify Gemini speed 0/1/2 independently and record `:150#`, `:151#`, `:152#` behavior and `:43#` readback.
+- [ ] With temperature compensation disabled and safe mechanical clearance, read enable/coefficient/direction; change coefficient and direction separately; enable compensation last and monitor motion closely.
+- [ ] Test controller `°C` and `°F` buttons separately; record `:16#`/`:17#` and `:38#` readback. Confirm the main phone presentation follows the confirmed controller setting.
+- [ ] Test delay-after-move with a conservative value within 0..255 ms and record `:72#` readback.
+- [ ] Before EEPROM save, record all readable settings. Send `:48#` once, power-cycle, and compare settings.
+- [x] User-tested controller reset `:40#` and restore defaults `:42#` on Gemini; both produced factory-reset behavior. No exact raw RX capture was retained, so the duplicate `:40#` action is hidden and only `:42#` remains in the UI as Factory reset.
+- [ ] Never combine first-time tests. Record selected profile, firmware, exact TX/RX, prior value, resulting value, and physical effect for each command.
+
 ## Continuous integration
 
 `.github/workflows/android-ci.yml` uses JDK 17 and Gradle caching, then runs `:app:testDebugUnitTest` and `:app:assembleDebug` on pushes and pull requests. It does not deploy, access signing secrets, or publish artifacts.
@@ -243,3 +302,29 @@ Historical verification does not mean the exact 1.1.6 builds have completed regr
 - If permission is denied or lost, disconnect and request permission again for the selected device.
 - If a response times out or is malformed, record exact serial settings and raw frame boundaries; do not try undocumented commands.
 - If Gradle fails before compilation, confirm JDK 17, SDK Platform 36, and ignored `local.properties`.
+
+## EAFCON 1.2.0 validation record (2026-10-03)
+
+- `:app:testDevDebugUnitTest`: 54 tests, 0 failures, 0 errors.
+- `:app:assembleDevDebug`, `:app:lintDevDebug`, `:app:bundleProdRelease`, `:app:lintVitalProdRelease`, and `:app:archiveProdReleaseBundle`: BUILD SUCCESSFUL.
+- Test APK: `app/build/outputs/apk/dev/debug/EAFCON_Dev_1.2.0.apk`; package `dev.sphc.eafcon.dev`, versionCode 12, versionName 1.2.0; Android Debug certificate verified. Shared copy: `D:\Sync_Data\BJ_Private\0000_활동(취미 등)\Astrophoto\Dev\EAFCON\EAFCON_Dev_1.2.0.apk`; SHA-256 `E6CFAE738277362D728A1B3A17C5FF6866CE6C495D1EF996015DDA82D7D8BBD5` (source and copy match).
+- Production AAB build/archive and lint tasks succeeded. The generated AAB is unsigned in this environment (`jarsigner` reports unsigned); it is not a Play-upload artifact until configured signing is applied and verified.
+- Newly added Advanced controls and all newly catalogued protocol functions remain hardware-unverified on Gemini. Follow the 1.2.0 checklist above; automated tests do not change this status.
+- No commit, push, or release was made.
+
+## EAFCON 1.2.2 validation record (2026-10-03)
+
+- `:app:testDevDebugUnitTest`: 61 tests, 0 failures, 0 errors. `:app:assembleDevDebug`, `:app:lintDevDebug`, `:app:bundleProdRelease`, `:app:lintVitalProdRelease`, and `:app:archiveProdReleaseBundle` completed successfully. Dev lint reports 31 warnings (dependency/SDK/resource and other lint notices); no lint error failed the task.
+- Test APK: `app/build/outputs/apk/dev/debug/EAFCON_Dev_1.2.2.apk`; package `dev.sphc.eafcon.dev`, versionCode 14, versionName 1.2.2. APK signature verification succeeded with the Android Debug certificate (SHA-256 `C40A8A73916C2E6120018616AC247BED742698C246A2C89E7E50258EB9FDFFD1`). APK SHA-256: `01205A0C1F6CFB09E7D68649D518E999BDD0FF7EEE1DCB25ED3DF8BCA613CB3E`.
+- BuildConfig verification confirmed the development APK enables `ENABLE_UNVERIFIED_DEVICE_MAX_WRITE`, while Production sets it to `false` and keeps the command locked.
+- Production bundle: `app/build/outputs/distribution/EAFCON_1.2.2_Play.aab`, SHA-256 `ED9F05EA6B756B31A901F22EB67FCED44855D704949D8A6966759370C6E2B7FD`. The AAB is unsigned because production upload signing is not configured; it is not Play-upload-ready.
+- The Dev APK was copied to the shared test folder at `D:\Sync_Data\BJ_Private\0000_활동(취미 등)\Astrophoto\Dev\EAFCON\EAFCON_Dev_1.2.2.apk`; the copied file hash matches the source.
+- This is an uncommitted development/field-test build. No commit, push, GitHub release, or Play upload was made. Newly added Administrative behavior remains source-verified/hardware-unverified; EEPROM persistence/reset/defaults remain UNKNOWN and unavailable. Set Device Maximum is available only in `devDebug` pending Gemini physical verification and is locked in Production.
+
+## EAFCON 1.2.2.1 validation record (2026-10-03)
+
+- 67 Dev JVM tests passed with zero failures/errors/skips. `assembleDevDebug`, `lintDevDebug`, `bundleProdRelease`, `lintVitalAnalyzeProdRelease`, and `archiveProdReleaseBundle` succeeded.
+- Development APK: `app/build/outputs/apk/dev/debug/EAFCON_Dev_1.2.2.1.apk`; package `dev.sphc.eafcon.dev`, versionCode 15, versionName 1.2.2.1. APK Signature Scheme v2 verification succeeded with the Android Debug certificate SHA-256 `C40A8A73916C2E6120018616AC247BED742698C246A2C89E7E50258EB9FDFFD1`.
+- APK SHA-256: `E35FD099A0C08C359EA1FD41B0A18F7D64496DFFACA86CB0EA3CF64BDC85B43B`. Matching shared copies: `D:\Sync_Data\BJ_Private\0000_활동(취미 등)\Astrophoto\Dev\EAFCON\EAFCON_Dev_1.2.2.1.apk` and the cache-distinct `EAFCON_Dev_1.2.2.1_vc15_E35FD099.apk`.
+- Production-path AAB: `app/build/outputs/distribution/EAFCON_1.2.2.1_Play.aab`, SHA-256 `9FA718D2C8E1531BAA04B4FB94F142CEE8EEF8616E831408F8EE01B003007FCD`. Building this path does not authorize Play upload or publication.
+- This record is the pre-release validation of the 1.2.2.1 working tree. Canonical release artifacts must be rebuilt from the finalized release commit. All newly characterized settings remain source-verified/hardware-unverified pending the manual checklist.

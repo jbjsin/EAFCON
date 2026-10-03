@@ -2,7 +2,7 @@
 
 ## 현재 상태와 문서 기준
 
-- EAFCON Android 앱에 Position Preset과 JSON SAF 가져오기/내보내기, USB 장치 상세 정보가 구현되었다. 현재 미출시 1.1.6 소스는 같은 코드·버전·커밋에서 Google Play Production(`dev.sphc.eafcon`, `EAFCON`, `prodRelease` AAB)과 GitHub Development(`dev.sphc.eafcon.dev`, `EAFCON Dev`, `devDebug` APK)를 만드는 영구 이중 채널 정책을 사용한다. 두 앱은 함께 설치할 수 있지만 내부 파일·설정·백업·USB 권한을 공유하지 않으며 한 번에 하나만 포커서에 연결해야 한다. 최초 실행은 각 앱 내부 `filesDir/Preset.json`을 만들고 `Default System` 위치 `7500`을 저장한다. 이전 SharedPreferences 프리셋은 이 파일로 한 번 이관한다. 가져오기는 선택한 파일 전체를 검증한 뒤 ID 기준으로 내부 `Preset.json`에 즉시 병합하고 원자적으로 저장한다. Android Auto Backup은 application ID별로 활성 상태다. 1.1.6은 Connection/Control/Settings 화면 분리, 항상 보이는 Connection/Control 상단 전환부와 스크롤 밖의 연결·위치·온도·이동 상태 표시, 팝업 전용 프리셋 관리, Light/Dark/Night Vision 테마, 버전형 JSON 직렬 연결 설정, 설정 화면의 영문/한글 선택과 이동 중 진동을 포함한다. 사용자는 Gemini EAF에서 기존 앱이 만족스럽게 작동함을 확인했지만 1.1.6의 전체 실기 회귀 시험은 아직 남아 있다. 다른 MyFocuserPro2 호환 장치는 아직 실기 테스트하지 않았다. 공유 빌드 메타데이터는 versionCode 11/versionName 1.1.6, `compileSdk`/`targetSdk` 36이다.
+- EAFCON은 Preset JSON import/export, 세부 USB 정보, 기존 Connection/Control/Settings 화면·테마·언어·진동을 유지하며 transport-neutral `FocuserDriver`와 capability 모델을 사용한다. 현재 unreleased 버전은 `versionCode 15`/`versionName 1.2.2.1`, `compileSdk`/`targetSdk` 36이다. 단일 소스 트리에서 Google Play Production(`dev.sphc.eafcon`, `EAFCON`, `prodRelease` AAB)과 GitHub/테스트 Development(`dev.sphc.eafcon.dev`, `EAFCON Dev`, `devDebug` APK)를 같은 버전으로 만든다. Connection에서 `Gemini Focuser Pro`(기본값)와 `MyFocuserPro2 Generic`을 명시적으로 선택하며 VID/PID로 추정하지 않는다. Gemini 프로필은 제조사 콘솔 2.1.0.0, Generic 프로필은 공식 firmware 338/Protocol 334 근거를 사용한다. Dev는 온도 보상, 장치 최대 위치, EEPROM 저장 `:48#`, 공장 초기화 `:42#`를 제공한다. Gemini 실기에서 `:40#` 재시작과 `:42#` 기본값 복원이 모두 공장 초기화처럼 동작하여 `:40#`은 protocol catalog에만 남기고 UI에서 숨긴다. Gemini 연결 시 Coil Power는 `O0#`로 읽혔으며, 이는 이동 금지가 아니라 이동할 때 코일을 켜고 정지하면 유지 전원을 해제하는 firmware 338 기본 동작이다. 컨트롤러 `°C`/`°F` 선택은 관리 기능에만 있으며 메인 표시도 동기화한다. Step Mode 후에는 실제 위치 동기화와 새 소프트웨어 한계를 입력하기 전까지 위치가 영구적으로 신뢰 불가 처리된다. Gemini가 유일하게 실기 확인된 포커서이며 다른 호환 장치는 미검증이다.
 - 저장소 루트의 `AGENTS.md`는 Codex 작업 지침의 자동 인식을 위해 이 문서의 주요 안전 규칙을 요약한다. 상세 계획과 VERIFIED / SOURCE-VERIFIED·HARDWARE-UNVERIFIED / UNVERIFIED 기준의 기준 문서는 이 `agent.md`다. 둘이 다르면 이 문서를 갱신하고 `AGENTS.md` 요약도 맞춘다.
 - 실제 패키지 경로와 현재 빌드 버전은 `app/` 및 `gradle/libs.versions.toml`에 고정했다. `gradlew` wrapper와 SDK 경로가 설정된 로컬 `local.properties`가 준비되어 있다. `local.properties`는 추적하지 않는다.
 - 이후 작업자는 수정 전 두 지침 파일을 읽고, 구조나 작업 흐름이 바뀌면 같은 변경에서 문서도 갱신한다.
@@ -35,7 +35,7 @@ Android USB Host를 통해 CH340/CH34x 시리얼 장치에 연결된 Gemini EAF�
 
 ## 예정 구조와 디렉터리 책임
 
-Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의존성은 최소화한다. 경계는 `Android USB 장치 탐색/권한 → SerialTransport → Gemini 명령 인코더·응답 파서 → FocuserController/상태 → ViewModel → Compose UI` 순서다. 프로토콜 코드는 Android API나 특정 시리얼 라이브러리에 의존하지 않는다. 시리얼 I/O와 폴링은 UI 스레드 밖에서 수행한다.
+Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의존성은 최소화한다. 1.2.0 경계는 `Compose UI → ViewModel → FocuserController → FocuserDriver → MyFocuserPro2Driver → MyFocuserPro2Protocol → SerialTransport`다. 범용 드라이버/컨트롤러 계약에는 USB serial, baud/framing, ASCII, `#` delimiter를 넣지 않는다. 프로토콜 코드는 Android API나 USB 라이브러리 타입에 의존하지 않는다. 시리얼 I/O와 폴링은 UI 스레드 밖에서 수행한다.
 
 디렉터리 책임은 다음과 같다.
 
@@ -44,14 +44,17 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 | `app/src/main/.../usb/` | USB 장치 목록, 권한, 시리얼 전송 및 가짜 전송 계층 |
 | `app/src/main/.../protocol/` | 정규 명령 생성, `#` 버퍼링, 응답 파싱 및 검증 |
 | `app/src/main/.../control/` | 요청 직렬화, 폴링, 소프트웨어 이동 제한, 연결/이동 상태 |
+| `app/src/main/.../driver/` | transport-neutral core driver contract, capability metadata, MyFocuserPro2 serial driver adapter |
 | `app/src/main/.../ui/` | ViewModel, Compose 화면, 사용자 입력 및 오류 표시 |
 | `app/src/main/.../presets/` | 이름 있는 위치 프리셋, 검증, JSON codec 및 앱 내부 `Preset.json` 저장 |
 | `app/src/main/.../settings/` | 직렬 연결 프로필 모델·검증·버전형 JSON·번들 기본값·로컬 저장 |
 | `app/src/test/` | 순수 JVM 프로토콜 및 이동 제한 테스트 |
 | `README.md` | 공개 프로젝트 상태, 실제 구현 기능, 사용법, 한계 |
 | `README_DEV.md` | 환경 설정, 빌드/시험, 하드웨어 검증표, 문제 해결과 상세 기록 |
+| `docs/protocol/` | protocol frames, parameter ranges, risk, evidence, verification state and unknowns |
+| `docs/architecture/` | driver/capability boundaries and feature-category policy |
 
-실제 USB 구현은 `usb-serial-for-android` 3.11.0을 사용하며 라이브러리 타입은 `SerialTransport` 및 USB 패키지 내부에 한정한다. 버전 채택 근거와 라이선스 검토 상태를 `README_DEV.md`에 기록한다. Gemini 실기 동작은 기존 기록으로 검증되었으나 다른 호환 장치는 검증되지 않았다.
+실제 USB 구현은 `usb-serial-for-android` 3.11.0을 사용하며 라이브러리 타입은 `SerialTransport` 및 USB 패키지 내부에 한정한다. 버전 채택 근거와 라이선스 검토 상태를 `README_DEV.md`에 기록한다. `FocuserDriver` core interface는 USB/serial type을 노출하지 않는다. MyFocuserPro2 프로토콜 feature 목록과 소스 대조는 `docs/protocol/MYFOCUSERPRO2_PROTOCOL.md`를, driver/capability 설계는 `docs/architecture/FOCUSER_DRIVER_ARCHITECTURE.md`를 기준으로 한다. Gemini core 동작은 역사적으로 실기 검증되었으나 새 Advanced 설정과 다른 호환 장치는 검증되지 않았다.
 
 ## 동작 및 안전 규칙
 
@@ -73,9 +76,22 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 
 ## 검증 상태 분류
 
-- **VERIFIED:** 실제 Gemini EAF의 CH34x 열거, Android USB Host 통신, 9600 8N1, `:02#`/`EOK#`, `:00#` 위치, `:01#` 이동 상태, `:06#` 온도, `:08#` 최대 위치, 정규 `:05<position>#` 절대 이동, 장거리 이동의 `I1#` → `I0#`, 기존 EAFCON을 통한 실제 장치 운용.
+- **VERIFIED:** 실제 Gemini EAF의 CH34x 열거, Android USB Host 통신, 9600 8N1, `:02#`/`EOK#`, `:00#` 위치, `:01#` 이동 상태, `:06#` 온도, `:08#` 최대 위치, 정규 `:05<position>#` 절대 이동, 장거리 이동의 `I1#` → `I0#`, 기존 EAFCON을 통한 실제 장치 운용. 사용자 실기 결과 `:40#`과 `:42#`은 모두 공장 초기화 동작을 했으며 원시 RX 기록은 없다.
 - **SOURCE-VERIFIED / HARDWARE-UNVERIFIED ON GEMINI:** STOP/Abort `:27#`. INDI MyFocuserPro2 소스에 근거해 구현했지만 이 Gemini에서 별도 물리 정지 결과가 기록되지 않았다.
 - **UNVERIFIED:** 다른 MyFocuserPro2 장치, 다른 하드웨어의 RTS/DTR 필요 여부, 안전한 자동 Gemini 판별, 장치 maximum 변경 명령, 포커서 내부의 현재 위치 표현값을 안전하게 변경하는 명령/동작, powered hub/별도 전원 구성에서 Gemini hot-plug가 릴레이 연결을 유지하는지 여부, 전체 1.1.6 실기 회귀 결과.
+
+## EAFCON 1.2.2.1 드라이버·프로토콜·기능 등급
+
+- 범용 `FocuserDriver`는 connect/disconnect, position, movement state, absolute move, STOP만 요구하며 USB/serial/ASCII/baud/delimiter는 모른다. Temperature, device maximum, optional setting operations는 별도 capability interface를 구현한 드라이버만 제공한다. controller는 raw command string이나 serial transport를 노출하지 않는다.
+- Capability metadata는 ID, support (`SUPPORTED`/`UNSUPPORTED`/`UNKNOWN`), access, category, verification state, risk, persistence, requires-idle, min/max/default, hardware motion 및 logical-coordinate 변경 여부를 갖는다. Optional driver behavior는 capability descriptor + optional interface로 표현하고 dummy methods를 만들지 않는다.
+- 설정 write는 연결 여부, 명시적으로 알려진 capability, category, idle 상태, 타입과 값 범위를 먼저 검사한다. 신뢰 가능한 readback이 있는 경우만 해당 값을 확인된 성공으로 표시한다. 쓰기 전송만 가능한 명령은 확인되지 않았다고 표시한다.
+- **Advanced:** 별도 화면에서 Reverse, Motor Speed(0–2), Backlash IN/OUT enable 및 steps를 제공한다. Backlash input은 0–255로 제한한다.
+- **Administrative:** 별도 화면에서 Step Mode, Sync Position, Set Device Maximum, idle Coil Power, Home, Display enable, 컨트롤러 Celsius/Fahrenheit, delay-after-move를 제공한다. Coil Power 0은 이동 중에는 정상적으로 코일을 켜지만 정지 후 유지 토크를 해제하고, 1은 정지 중에도 코일을 켜 유지 토크를 제공한다. Step Mode는 위치 신뢰값과 저장된 소프트웨어 한계를 무효화하며, 사용자가 논리 위치를 동기화하고 새 software limit을 설정할 때까지 이동과 상한 변경을 차단한다.
+- **Device Administration:** 제조사 콘솔과 공식 firmware 338에서 EEPROM `:48#`, controller reset `:40#`, restore defaults `:42#`를 확인했다. Gemini 실기에서 `:40#`과 `:42#`이 같은 공장 초기화 결과를 보여 중복되는 `:40#` UI는 제거한다. Dev UI는 EEPROM 저장과 `:42#` 공장 초기화만 명시적 확인 뒤 송신한다. Production에서는 잠근다. 펌웨어 플래싱은 포함하지 않는다.
+- Temperature Compensation read/write frame은 출처 기반으로 catalog하지만 1.2.0 UI는 보류한다. 컨트롤러가 host request 없이 이동할 수 있어 소프트웨어 safety maximum을 EAFCON이 감독할 수 없다. Temperature coefficient range도 project guide 검색 발췌의 0–400과 현행 INDI UI 0–50이 충돌하여 제한 입력을 임의로 선택하지 않는다.
+- 프로토콜 명세의 주요 source discrepancy: 과거 Gemini 물리 기록은 `:02# → EOK#`; 현행 INDI handshake는 `:03# → F<firmware>#` firmware query다. Gemini connection behavior는 `:02#`로 유지하고 `:03#`을 자동 송신하지 않는다. Backlash guide range 0–255와 INDI 0–512 차이는 문서화하고 EAFCON write UI는 공통 보수 범위 0–255를 쓴다.
+- Reverse :13/:14, speed :43/:150, backlash IN :74/:78/:73/:77, OUT :76/:80/:75/:79의 exact frame은 현재 INDI source에서 유래하며 Gemini hardware-unverified다. 각 항목과 range/evidence는 `docs/protocol/MYFOCUSERPRO2_PROTOCOL.md`에 상세 기록한다. INDI implementation: `https://github.com/indilib/indi/blob/master/drivers/focuser/myfocuserpro2.cpp`; official project Communication Protocol 334/User Guide index: `https://sourceforge.net/projects/arduinoascomfocuserpro2diy/files/Documentation/`.
+- ZWO EAF 또는 다른 driver는 1.2.x에서 구현하지 않는다. 이후 HID binary feature/control transfer도 가능하도록 generic interface를 유지하고, serial profile은 MyFocuserPro2 serial driver에만 붙인다.
 
 ## 후속 검토 아이디어
 
@@ -104,6 +120,11 @@ Kotlin, Jetpack Compose, ViewModel, Coroutines/Flow를 기본으로 하되 의�
 - 이동 계산: `7500 + 25 = 7525`, `7500 - 25 = 7475`, 0 미만과 사용자 상한 초과 거부, 미확인 현재 위치에서 상대 이동 차단.
 - 가짜 전송: 연결, 응답 지연/타임아웃, 이동 중 `I1`에서 `I0` 전환과 즉시 위치 조회, 이동 중 분리, 응답 분할/병합.
 - 실제 장치: CH340 인식, 수동 선택, 권한, 9600 8N1, 핸드셰이크와 각 조회, 소폭 절대·상대 이동, 완료 후 위치 일치, 예기치 않은 USB 분리. 결과는 자동 테스트와 구분한다.
+- 1.2.0 protocol: each implemented Advanced canonical frame, response prefix/value parsing, malformed boolean/enum/step counts, bounds, and positive/negative edge values.
+- Driver boundary: generic controller fake driver without SerialTransport; optional capability fake; metadata preservation; unknown/unsupported and non-Advanced operations do not reach settings API.
+- Advanced safety: reverse/speed/backlash read-write with readback, invalid values rejected before write, write blocked during MOVING, mismatched readback reported as not confirmed.
+- Administrative tests: bounds and idle gates, readback, Step Mode coordinate invalidation and persistence, explicit sync/new-limit recovery, and blocked Set Device Maximum.
+- Device Administration tests: UNKNOWN EEPROM/reset/default capability never reaches the driver or emits a transport frame; only source-backed supported descriptors can appear behind explicit confirmation.
 
 ## 빌드·실행 명령
 
@@ -124,9 +145,26 @@ Windows PowerShell에서 저장소 루트에서 실행한다. JDK 17과 Android 
 
 - Kotlin의 작은 책임 단위와 명시적 상태 모델을 사용한다. Activity/Composable에 프로토콜 파싱이나 USB I/O를 넣지 않는다. 폴링 주기, 타임아웃, 시리얼 설정은 중앙에 둔다.
 - `VERIFIED`는 실제 Gemini 장치의 송수신/물리 결과, `SOURCE-VERIFIED / HARDWARE-UNVERIFIED`는 신뢰할 수 있는 프로토콜 구현에 근거하지만 해당 Gemini에서 아직 확인하지 않은 동작, `UNVERIFIED`는 그 밖의 시험 전 동작으로 구분한다. 코드 주석과 문서에서 추측을 검증 사실로 바꾸지 않는다.
-- 새 프로토콜 동작을 추가할 때 원문 명령·응답, 시험 장치, 설정, 결과, 자동 테스트와 수동 확인 여부를 기록한다. STOP은 위 출처에 명시된 `:27#`만 사용하며 장치별 확인 상태를 구분한다. 장치 최대치 변경 명령은 검증 전까지 송신하지 않는다.
+- 새 프로토콜 동작을 추가할 때 원문 명령·응답, 시험 장치, 설정, 결과, 자동 테스트와 수동 확인 여부를 기록한다. STOP은 위 출처에 명시된 `:27#`만 사용하며 장치별 확인 상태를 구분한다. 출처가 확인된 장치 최대치 변경은 `devDebug`에서만 시험 가능하고 `prodRelease`에서는 Gemini 실기 검증 전까지 송신하지 않는다. 프레임 자체가 UNKNOWN인 명령은 어떤 변형에서도 송신하지 않는다.
 - `README.md`의 DONE/IN PROGRESS/PLANNED는 실제 상태와 일치시킨다. `README_DEV.md`에는 환경, 사용법, USB 시험 절차, 문제 해결 및 하드웨어 체크리스트를 유지한다. 구조나 작업 규칙 변경은 이 문서에 함께 반영한다.
 - Git 초기화는 구현 시작 시 수행한다. 기능별로 작은 변경을 만들고 빌드/테스트 결과를 확인한다. 다른 작업자의 변경을 덮어쓰거나 공유 브랜치를 임의로 되돌리지 않는다. 생성 파일과 로컬 비밀/장치 로그는 추적하지 않는다.
 - 병렬 작업 시 `usb`, `protocol`, `control`, `ui`, 테스트/문서 영역으로 담당 파일을 나눈다. 공통 인터페이스와 패키지 경로를 먼저 합의하고 중앙 Gradle 설정·Manifest·README 같은 파일의 동시 편집을 피한다. 충돌 가능성이 생기면 담당자에게 변경 범위를 알리고 통합 담당자가 하나씩 반영한다.
 - Google Play 업로드마다 `versionCode`를 증가시킨다. release artifact는 AAB이며 Play App Signing을 사용한다. keystore, 비밀번호, 로컬 signing properties와 배포 secrets는 절대 저장소에 커밋하지 않는다.
 - 영구 배포 정책은 Google Play Production과 GitHub Development의 이중 채널이다. 하나의 확정 커밋에서 같은 versionName/versionCode로 `prodRelease` AAB와 `devDebug` APK를 만든다. GitHub에는 `EAFCON_Dev_<version>.apk`만 올리고 개발·필드 테스트 빌드임을 명시한다. Production AAB는 `EAFCON_<version>_Play.aab`와 버전·코드·커밋·해시·날짜·서명 상태 기록을 로컬에 보관한다. 명시적 요청 없이는 Play 업로드를 하지 않으며, 산출물 사이에 소스를 바꾸지 않는다.
+
+## EAFCON 1.2.2 architecture and validation state (2026-10-03)
+
+- `FocuserController` consumes transport-neutral `FocuserDriver`; `MyFocuserPro2Driver` owns the serial-backed implementation. Optional operations use capability descriptors with support, access, category, evidence/verification, risk, persistence, idle, and range metadata. Future HID transports must remain below this driver boundary.
+- Advanced UI is separate from Control and exposes source-backed Reverse, Motor Speed, Backlash IN/OUT, and Dev-only temperature compensation tests. Administrative UI exposes source-backed Step Mode, Sync Position, Coil Power, Home, display controls, controller C/F mode, and delay-after-move with category, idle, range, confirmation, and readback rules. Step Mode persists a movement lock before transmission; movement stays blocked until explicit position sync and a new software maximum. Device Maximum and high-risk Device Administration writes are enabled only in `devDebug`; `prodRelease` keeps them locked pending Gemini verification. Phone C/F presentation remains a separate local preference.
+- Protocol evidence, exact frames, response grammar, parameter ranges, categories, risk, and verification states are in `docs/protocol/MYFOCUSERPRO2_PROTOCOL.md`; architecture is in `docs/architecture/FOCUSER_DRIVER_ARCHITECTURE.md`. Gemini historical `:02# -> EOK#` remains the connection handshake; the INDI `:03#` firmware query is distinct and is not auto-sent. Backlash range disagreement is documented; UI uses 0–255. Coefficient range disagreement is unresolved and no write control is exposed.
+- Validation on 2026-10-03: 61 Dev JVM tests passed; Dev Debug assemble/lint and Production AAB bundle/lint-vital/archive tasks succeeded. The Dev APK is `EAFCON_Dev_1.2.2.apk`, package `dev.sphc.eafcon.dev`, code 14, version 1.2.2, debug-signed and verified (certificate SHA-256 `C40A8A73916C2E6120018616AC247BED742698C246A2C89E7E50258EB9FDFFD1`). APK SHA-256 is `01205A0C1F6CFB09E7D68649D518E999BDD0FF7EEE1DCB25ED3DF8BCA613CB3E`; the matching shared-folder copy is `D:\Sync_Data\BJ_Private\0000_활동(취미 등)\Astrophoto\Dev\EAFCON\EAFCON_Dev_1.2.2.apk`. Dev BuildConfig enables the unverified device-maximum write for testing; Prod BuildConfig disables it. The archived Production AAB SHA-256 is `ED9F05EA6B756B31A901F22EB67FCED44855D704949D8A6966759370C6E2B7FD`; it is unsigned and must not be uploaded until signing is configured and verified.
+- New Advanced and Administrative commands are SOURCE-VERIFIED / HARDWARE-UNVERIFIED on Gemini. Run the 1.2.0 Advanced and 1.2.2 Administrative Gemini checklists in `README_DEV.md`; physical behavior is not established by JVM tests/builds. Dev lint reported 30 warnings. No commit, push, Play upload, or GitHub release was made.
+
+## EAFCON 1.2.2.1 characterization state (2026-10-03)
+
+- Added an explicit persisted `FocuserType`: `Gemini Focuser Pro` is the compatibility-preserving default and `MyFocuserPro2 Generic` is the official firmware-family profile. The selection is independent of serial parameters, cannot change while connected, and is never inferred from USB identity.
+- Static inspection of manufacturer `GeminiFocuserProConsole.exe` 2.1.0.0 and official firmware 338 established the previously missing command frames. `MyFocuserPro2Protocol` now has typed encoders/parsers for temperature compensation/direction/coefficient, C/F mode/readback, resolution, step size, display settings, jog, delay, home-switch status, diagnostics, EEPROM persist, reset, and restore defaults. Conflicting or board-specific commands remain documented and are not guessed.
+- Dev exposes requested hardware-test functions; Production locks autonomous-motion and Device Administration writes through BuildConfig capability metadata. Generic and Gemini currently share the protocol driver but keep distinct descriptors/evidence and profile-specific canonical speed encoding.
+- Newly exposed commands retain their individual verification states. Gemini `:40#`/`:42#` factory-reset outcome is VERIFIED by user physical testing; remaining commands stay at their documented source/hardware state. Automated tests do not change verification state.
+- Pre-release validation: 67 Dev JVM tests passed; Dev assemble/lint and Production bundle/lint-vital/archive tasks succeeded. The working-tree `EAFCON_Dev_1.2.2.1.apk` was v2 debug-signed with SHA-256 `E35FD099A0C08C359EA1FD41B0A18F7D64496DFFACA86CB0EA3CF64BDC85B43B`. Canonical Development and Production artifacts must be rebuilt from the finalized release commit. The Production AAB is post-signed with the external upload key without exposing signing secrets to Gradle, Git, or logs.
+- Administrative UI groups current-position display reset, position multiplier, device maximum, display options, and motor control into separate cards. Gemini's absent LCD leaves the LCD switch visibly disabled. Device Administration uses explained EEPROM-save and Factory-reset cards, with duplicate controller restart hidden. A confirmed/read controller C/F selection is the only temperature-unit control and synchronizes the main UI temperature unit and compensation coefficient's `°C`/`°F` label. Temperature compensation uses language-neutral `Temperature +/- : Steps +/-` and `Temperature +/- : Steps -/+` choices; the same-direction choice maps to firmware `tcdirection=0`, with the inversion tested explicitly.

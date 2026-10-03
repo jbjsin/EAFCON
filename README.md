@@ -20,6 +20,11 @@ EAFCON uses two permanent distribution channels built from the same source versi
 - Optional foreground vibration while the focuser reports MOVING, with persistent five-level strength selection at 10/30/50/70/90% of Android's maximum amplitude. Selecting a level gives a short preview pulse; movement vibration cancels when movement ends, USB disconnects, or EAFCON leaves the foreground.
 - Named position presets in a dedicated dialog, with distinct Load, Create, and Edit flows plus portable JSON import/export through Android's file picker. First launch creates private `Preset.json` with `Default System` at position `7500`.
 - Editable baud rate, data bits, stop bits, parity, flow control, and timeout values loaded from a versioned JSON connection profile.
+- A separate, capability-driven Advanced Focuser Controls page for source-backed Reverse, Motor Speed, and Backlash IN/OUT settings. Changes are accepted only while connected and idle, and are read back before EAFCON confirms them. These newly implemented commands have not yet been physically verified on Gemini.
+- A separate Administrative page for Step Mode, logical-position sync, device maximum, coil power, Home, and controller display settings. High-impact actions require confirmation. Step Mode invalidates trusted position until it is explicitly synchronized and a new software limit is set.
+- Set Device Maximum is available only in the Development APK. Controller `°C`/`°F` selection also controls EAFCON's main temperature presentation.
+- Explicit focuser type selection between **Gemini Focuser Pro** and **MyFocuserPro2 Generic**. Gemini remains the only physically tested model; the manufacturer console supplies source evidence for the expanded Gemini profile.
+- The Development build exposes EEPROM save and factory reset behind explicit confirmation. Production keeps these high-risk writes locked. The separate controller-reset action is hidden because Gemini hardware testing found it behaves like factory reset.
 - Demo mode for exercising the UI without hardware.
 - STOP button while moving. STOP uses the source-backed MyFocuserPro2 `:27#` abort command; physical STOP behavior on the Gemini EAF remains to be explicitly verified.
 - Parser support for fragmented and coalesced `#`-terminated serial responses.
@@ -50,13 +55,13 @@ Historically verified on a physical Gemini EAF with Android USB Host and a CH340
 - Canonical `:05<position>#` absolute movement and the `I1#` to `I0#` movement transition.
 - Successful focuser operation through EAFCON on a Galaxy Fold4.
 
-These historical results do not replace regression testing for each release. The `:27#` STOP command is source-verified from the INDI MyFocuserPro2 driver but remains hardware-unverified on Gemini. Other MyFocuserPro2-compatible focuser models, RTS/DTR requirements on other hardware, automatic device identification, and device-maximum-changing commands are unverified. EAFCON never sends an unverified set-maximum command.
+These historical results do not replace regression testing for each release. The `:27#` STOP command is source-verified from the INDI MyFocuserPro2 driver but remains hardware-unverified on Gemini. Other MyFocuserPro2-compatible focuser models, RTS/DTR requirements on other hardware, automatic device identification, and device-maximum-changing behavior are unverified. Set Device Maximum is available only in the Development build with idle, position, software-limit, range, confirmation, and readback checks.
 
 ## Android and builds
 
-The current source prepares EAFCON 1.1.6 (`versionCode 11`), requires Android 8.0/API 26 or newer, and targets/compiles against API 36. The Development APK is named `EAFCON_Dev_1.1.6.apk`; the locally archived Production bundle is named `EAFCON_1.1.6_Play.aab`. Developer setup, build commands, signing guidance, and hardware regression procedures are in [README_DEV.md](README_DEV.md). The latest published GitHub release remains v1.1.5 until a separate release request is completed.
+EAFCON 1.2.2.1 (`versionCode 15`) requires Android 8.0/API 26 or newer and targets/compiles against API 36. The Development APK is named `EAFCON_Dev_1.2.2.1.apk`; the locally archived Production bundle is named `EAFCON_1.2.2.1_Play.aab`. Developer setup, build commands, signing guidance, protocol evidence, and hardware regression procedures are in [README_DEV.md](README_DEV.md).
 
-The Google Play listing is not published yet and Production signing is not configured. Existing pre-Play GitHub builds use `dev.sphc.eafcon` with a development/debug key; they must not define the future Play signing identity. The first Play transition may require preset export, uninstalling the pre-Play app, installing the Play version, and importing the preset JSON. Future GitHub Dev APKs use `dev.sphc.eafcon.dev` and coexist with Production.
+The Google Play listing is not published yet. Production signing material stays outside the repository; the Play AAB is signed with the dedicated upload key and then verified before upload. Existing pre-Play GitHub builds use `dev.sphc.eafcon` with a development/debug key; they do not define the Play signing identity. The first Play transition may require preset export, uninstalling the pre-Play app, installing the Play version, and importing the preset JSON. GitHub Dev APKs use `dev.sphc.eafcon.dev` and coexist with Production.
 
 ## Development progress
 
@@ -71,6 +76,10 @@ The Google Play listing is not published yet and Production signing is not confi
 - Card-grouped Settings sections for interface, movement vibration, serial connection, and compatibility guidance.
 - Versioned JSON serial settings with editable connection parameters and a bundled Gemini default profile.
 - Fragmented/coalesced parser handling and source-backed `:27#` STOP implementation.
+- Transport-neutral focuser driver contract and MyFocuserPro2 serial implementation.
+- Formal capability model and Advanced controls for Reverse, Speed, and Backlash with validated input and readback.
+- Separate Administrative controls with explicit high-risk confirmations and persistent Step Mode position invalidation.
+- Capability-gated Device Administration surface; source-backed persistence/reset/default frames are Dev-only pending physical verification.
 - Historical physical operation with Gemini EAF.
 - API 36 target, final `dev.sphc.eafcon` application ID, and basic GitHub Actions CI.
 - Dual-channel Gradle variants: GitHub `devDebug` APK and Google Play `prodRelease` AAB from one source commit and shared version.
@@ -82,6 +91,7 @@ The Google Play listing is not published yet and Production signing is not confi
 - Explicit physical Gemini STOP validation.
 - Physical revalidation of Gemini detach/reconnect while the SeRelCam relay remains attached.
 - Physical validation of preset and remaining identical-VID/PID multi-device flows.
+- Manual physical Gemini verification of newly added 1.2.x Advanced and Administrative settings; software tests do not imply hardware verification.
 
 ### PLANNED
 
@@ -89,6 +99,8 @@ The Google Play listing is not published yet and Production signing is not confi
 - Optional automatic device identification only if it can be made safe without interfering with other USB clients.
 - Research a safe, source-verified way to change the focuser's internally reported current-position value. No command is selected or implemented yet.
 - Explore grouped presets with a shared reference position and per-item increments/decrements; the interaction and storage model are not yet decided.
+- Physically verify the newly source-backed Gemini settings one at a time and record raw TX/RX and device behavior.
+- Research another driver family, with ZWO EAF a candidate for a later 1.2.x release; no ZWO driver is part of 1.2.0.
 
 ## Safety
 

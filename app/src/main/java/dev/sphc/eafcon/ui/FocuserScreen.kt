@@ -28,11 +28,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.sphc.eafcon.R
 import dev.sphc.eafcon.control.MovementState
+import dev.sphc.eafcon.driver.CapabilityId
+import dev.sphc.eafcon.driver.CapabilitySupport
+import dev.sphc.eafcon.driver.CapabilityValue
+import dev.sphc.eafcon.driver.FeatureCategory
+import dev.sphc.eafcon.driver.FocuserType
 import dev.sphc.eafcon.presets.PositionPreset
 import dev.sphc.eafcon.presets.PresetRules
 import dev.sphc.eafcon.settings.*
 
-internal enum class AppPage { CONNECTION, CONTROL, SETTINGS }
+internal enum class AppPage { CONNECTION, CONTROL, ADVANCED, ADMINISTRATION, DEVICE_ADMINISTRATION, SETTINGS }
 private enum class PresetTab { LOAD, SAVE }
 private enum class PresetSaveMode { NEW, EDIT }
 
@@ -45,12 +50,22 @@ internal fun secondaryBackDestination(current: AppPage, lastPrimary: AppPage): A
     else -> AppPage.CONNECTION
 }
 
+/** Firmware direction 0 means a temperature rise increases the target position. */
+internal fun increaseOnTemperatureRiseFromProtocol(direction: Boolean): Boolean = !direction
+internal fun protocolDirectionForIncreaseOnTemperatureRise(increase: Boolean): Boolean = !increase
+
+internal fun showDeviceAdministrationAction(id: CapabilityId): Boolean =
+    id != CapabilityId.RESET_CONTROLLER
+
 @Composable
 private fun AppPage.localizedLabel(): String = stringResource(
     when (this) {
         AppPage.CONNECTION -> R.string.page_connection
         AppPage.CONTROL -> R.string.page_control
         AppPage.SETTINGS -> R.string.page_settings
+        AppPage.ADVANCED -> R.string.page_advanced
+        AppPage.ADMINISTRATION -> R.string.page_administration
+        AppPage.DEVICE_ADMINISTRATION -> R.string.page_device_administration
     },
 )
 
@@ -94,9 +109,19 @@ private fun localizedRuntimeMessage(raw: String): String {
     Regex("^Exported (\\d+) presets$").matchEntire(raw)?.let {
         return stringResource(R.string.message_exported_presets, it.groupValues[1].toInt())
     }
-    Regex("^Imported and merged (\\d+) presets$").matchEntire(raw)?.let {
-        return stringResource(R.string.message_merged_presets, it.groupValues[1].toInt())
-    }
+        Regex("^Imported and merged (\\d+) presets$").matchEntire(raw)?.let {
+            return stringResource(R.string.message_merged_presets, it.groupValues[1].toInt())
+        }
+        val administrativeMessages = mapOf(
+            "Home command sent; the protocol provides no completion acknowledgment" to R.string.admin_action_home_sent,
+            "Celsius display command sent; the protocol provides no acknowledgment" to R.string.admin_action_celsius_sent,
+            "Step Mode confirmed; sync the position before moving" to R.string.admin_action_step_confirmed,
+            "Logical position synchronized" to R.string.admin_action_sync_confirmed,
+            "Device maximum confirmed" to R.string.admin_action_max_confirmed,
+            "Controller temperature unit confirmed" to R.string.admin_action_temperature_unit_confirmed,
+            "Device administration command sent; completion is not confirmed" to R.string.device_admin_sent,
+        )
+        administrativeMessages[raw]?.let { return stringResource(it) }
     return when (raw) {
         "USB device detached; focuser disconnected" -> stringResource(R.string.message_usb_detached)
         "Select a USB serial device first" -> stringResource(R.string.message_select_usb)
@@ -118,6 +143,8 @@ private fun localizedRuntimeMessage(raw: String): String {
         "Connect to a focuser first" -> stringResource(R.string.message_connect_first)
         "Focuser is not idle" -> stringResource(R.string.message_focuser_not_idle)
         "Focuser is not moving" -> stringResource(R.string.message_focuser_not_moving)
+        "Sync the focuser position before setting movement limits" -> stringResource(R.string.admin_position_needs_sync)
+        "Sync the focuser position before moving after a Step Mode change" -> stringResource(R.string.admin_position_needs_sync)
         "Preset name cannot be empty" -> stringResource(R.string.message_preset_name_empty)
         else -> raw
     }
@@ -176,10 +203,22 @@ fun FocuserScreen(
     LaunchedEffect(focuser.softwareMaximum) {
         if (softwareMaximum.isBlank()) softwareMaximum = focuser.softwareMaximum?.toString().orEmpty()
     }
+    LaunchedEffect(focuser.positionNeedsSync) {
+        if (focuser.positionNeedsSync) {
+            softwareMaximum = ""
+            target = ""
+        }
+    }
     LaunchedEffect(focuser.connected) {
         if (focuser.connected) {
             pageName = AppPage.CONTROL.name
             lastPrimaryPageName = AppPage.CONTROL.name
+        }
+    }
+    LaunchedEffect(page, focuser.connected) {
+        when {
+            page == AppPage.ADVANCED && focuser.connected -> viewModel.refreshSettings(FeatureCategory.ADVANCED)
+            page == AppPage.ADMINISTRATION && focuser.connected -> viewModel.refreshSettings(FeatureCategory.ADMINISTRATIVE)
         }
     }
     val exportLauncher = rememberLauncherForActivityResult(
@@ -195,6 +234,12 @@ fun FocuserScreen(
                 themeMode = themeMode,
                 onThemeModeChange = onThemeModeChange,
                 onNavigate = ::navigateTo,
+                showAdvanced = focuser.connected && ui.capabilities?.available(FeatureCategory.ADVANCED)
+                    ?.any { it.unavailableReason == null } == true,
+                showAdministration = focuser.connected && ui.capabilities?.available(FeatureCategory.ADMINISTRATIVE)
+                    ?.any { it.unavailableReason == null } == true,
+                showDeviceAdministration = focuser.connected && ui.capabilities?.descriptors
+                    ?.any { it.category == FeatureCategory.DEVICE_ADMINISTRATION } == true,
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -243,6 +288,9 @@ fun FocuserScreen(
                         vibrationSettings = vibrationSettings,
                         onVibrationSettingsChange = onVibrationSettingsChange,
                     )
+                    AppPage.ADVANCED -> AdvancedFocuserControlsPage(ui, viewModel)
+                    AppPage.ADMINISTRATION -> AdministrativeControlsPage(ui, viewModel)
+                    AppPage.DEVICE_ADMINISTRATION -> DeviceAdministrationPage(ui, viewModel)
                 }
             }
         }
@@ -337,6 +385,9 @@ private fun EafconTopBar(
     themeMode: AppThemeMode,
     onThemeModeChange: (AppThemeMode) -> Unit,
     onNavigate: (AppPage) -> Unit,
+    showAdvanced: Boolean,
+    showAdministration: Boolean,
+    showDeviceAdministration: Boolean,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     TopAppBar(
@@ -352,7 +403,14 @@ private fun EafconTopBar(
             Box {
                 IconButton(onClick = { menuOpen = true }) { Text("☰", style = MaterialTheme.typography.titleLarge) }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    AppPage.entries.forEach { destination ->
+                    AppPage.entries.filter { destination ->
+                        when (destination) {
+                            AppPage.ADVANCED -> showAdvanced
+                            AppPage.ADMINISTRATION -> showAdministration
+                            AppPage.DEVICE_ADMINISTRATION -> showDeviceAdministration
+                            else -> true
+                        }
+                    }.forEach { destination ->
                         DropdownMenuItem(
                             text = { Text(destination.localizedLabel()) },
                             onClick = {
@@ -411,7 +469,7 @@ private fun ConnectionStatusPill(ui: FocuserUiState, themeMode: AppThemeMode) {
         append("P ")
         append(ui.focuser.currentPosition ?: "—")
         append(" · ")
-        append(ui.focuser.temperatureCelsius?.let { "%.1f°C".format(it) } ?: "—°C")
+        append(formatTemperature(ui.focuser.temperatureCelsius, ui.temperatureDisplayUnit).replace(" ", ""))
         append(" · ")
         append(movementLabel)
     }
@@ -458,6 +516,33 @@ private fun ConnectionPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.focuser_type), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.focuser_type_note), style = MaterialTheme.typography.bodySmall)
+                FocuserType.entries.forEach { type ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable(enabled = !focuser.connected && !ui.isWorking) {
+                            viewModel.selectFocuserType(type)
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = ui.focuserType == type,
+                            onClick = { viewModel.selectFocuserType(type) },
+                            enabled = !focuser.connected && !ui.isWorking,
+                        )
+                        Column {
+                            Text(type.displayName, fontWeight = FontWeight.Medium)
+                            Text(
+                                stringResource(if (type == FocuserType.GEMINI_FOCUSER_PRO) R.string.focuser_type_gemini_note else R.string.focuser_type_generic_note),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.usb_devices), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -567,12 +652,12 @@ private fun ControlPage(
                 HorizontalDivider()
                 StatusRow(stringResource(R.string.device_max), focuser.deviceMaximum?.toString() ?: "—")
                 StatusRow(stringResource(R.string.software_limit), focuser.softwareMaximum?.toString() ?: stringResource(R.string.not_set))
-                StatusRow(stringResource(R.string.temperature), focuser.temperatureCelsius?.let { "%.1f °C".format(it) } ?: "—")
+                StatusRow(stringResource(R.string.temperature), formatTemperature(focuser.temperatureCelsius, ui.temperatureDisplayUnit))
                 StatusRow(stringResource(R.string.movement), focuser.movement.localizedLabel())
             }
         }
         CompactNumberAction(stringResource(R.string.software_limit), softwareMaximum, onSoftwareMaximumChange, stringResource(R.string.action_set), onSetSoftwareMaximum,
-            focuser.connected && !focuser.commandPending && softwareMaximum.isNotBlank())
+            focuser.connected && !focuser.commandPending && !focuser.positionNeedsSync && softwareMaximum.isNotBlank())
         CompactNumberAction(stringResource(R.string.target_position), target, onTargetChange, stringResource(R.string.action_go), onMoveTo, canMove && target.isNotBlank())
         Button(
             onClick = onStop,
@@ -613,6 +698,519 @@ private fun ControlPage(
         }
         Button(onClick = onOpenPresets, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.action_presets)) }
         UiMessages(ui)
+    }
+}
+
+@Composable
+private fun AdvancedFocuserControlsPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
+    val descriptors = ui.capabilities?.available(FeatureCategory.ADVANCED)
+        ?.filter { it.unavailableReason == null }
+        .orEmpty()
+    val enabled = ui.focuser.connected && ui.focuser.movement == MovementState.IDLE && !ui.focuser.commandPending
+    var backlashInText by rememberSaveable { mutableStateOf("0") }
+    var backlashOutText by rememberSaveable { mutableStateOf("0") }
+    var temperatureCoefficientText by rememberSaveable { mutableStateOf("0") }
+    var temperatureDirectionMenuOpen by remember { mutableStateOf(false) }
+    val backlashIn = ui.advancedValues[CapabilityId.BACKLASH_IN] as? CapabilityValue.BacklashValue
+    val backlashOut = ui.advancedValues[CapabilityId.BACKLASH_OUT] as? CapabilityValue.BacklashValue
+    val temperatureCompensation = (ui.advancedValues[CapabilityId.TEMPERATURE_COMPENSATION] as? CapabilityValue.BooleanValue)?.value
+    val temperatureDirection = (ui.advancedValues[CapabilityId.TEMPERATURE_COMPENSATION_DIRECTION] as? CapabilityValue.BooleanValue)?.value
+    val temperatureCoefficient = (ui.advancedValues[CapabilityId.TEMPERATURE_COMPENSATION_COEFFICIENT] as? CapabilityValue.IntegerValue)?.value
+
+    LaunchedEffect(backlashIn?.steps) { backlashIn?.let { backlashInText = it.steps.toString() } }
+    LaunchedEffect(backlashOut?.steps) { backlashOut?.let { backlashOutText = it.steps.toString() } }
+    LaunchedEffect(temperatureCoefficient) { temperatureCoefficient?.let { temperatureCoefficientText = it.toString() } }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.advanced_controls_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.advanced_controls_description), style = MaterialTheme.typography.bodySmall)
+                if (ui.advancedLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (!ui.focuser.connected) Text(stringResource(R.string.advanced_requires_connection))
+                if (descriptors.isEmpty() && ui.focuser.connected) Text(stringResource(R.string.no_advanced_capabilities))
+                OutlinedButton(onClick = viewModel::refreshAdvancedSettings, enabled = ui.focuser.connected) {
+                    Text(stringResource(R.string.action_refresh))
+                }
+            }
+        }
+
+        if (descriptors.any { it.id == CapabilityId.REVERSE || it.id == CapabilityId.MOTOR_SPEED }) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.advanced_motion), fontWeight = FontWeight.Bold)
+                    if (descriptors.any { it.id == CapabilityId.REVERSE }) {
+                        val value = (ui.advancedValues[CapabilityId.REVERSE] as? CapabilityValue.BooleanValue)?.value
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.advanced_reverse))
+                                ui.advancedErrors[CapabilityId.REVERSE]?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                            }
+                            Switch(
+                                checked = value ?: false,
+                                onCheckedChange = { viewModel.updateAdvancedSetting(CapabilityId.REVERSE, CapabilityValue.BooleanValue(it)) },
+                                enabled = enabled && value != null,
+                            )
+                        }
+                    }
+                    if (descriptors.any { it.id == CapabilityId.MOTOR_SPEED }) {
+                        val speed = (ui.advancedValues[CapabilityId.MOTOR_SPEED] as? CapabilityValue.IntegerValue)?.value
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.advanced_motor_speed), Modifier.weight(1f))
+                            TextButton(onClick = {
+                                val next = if (speed == null || speed >= 2) 0 else speed + 1
+                                viewModel.updateAdvancedSetting(CapabilityId.MOTOR_SPEED, CapabilityValue.IntegerValue(next))
+                            }, enabled = enabled && speed != null) {
+                                Text(stringResource(when (speed) { 0 -> R.string.speed_slow; 1 -> R.string.speed_medium; 2 -> R.string.speed_fast; else -> R.string.not_set }))
+                            }
+                        }
+                        ui.advancedErrors[CapabilityId.MOTOR_SPEED]?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        }
+
+        if (descriptors.any { it.id == CapabilityId.BACKLASH_IN || it.id == CapabilityId.BACKLASH_OUT }) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.advanced_backlash), fontWeight = FontWeight.Bold)
+                    if (descriptors.any { it.id == CapabilityId.BACKLASH_IN }) {
+                        BacklashControl(
+                            title = stringResource(R.string.backlash_in),
+                            enabledValue = backlashIn,
+                            stepsText = backlashInText,
+                            onStepsChange = { backlashInText = it.filter(Char::isDigit).take(3) },
+                            error = ui.advancedErrors[CapabilityId.BACKLASH_IN],
+                            enabled = enabled,
+                            onSave = { flag, steps -> viewModel.updateAdvancedSetting(CapabilityId.BACKLASH_IN, CapabilityValue.BacklashValue(flag, steps)) },
+                        )
+                    }
+                    if (descriptors.any { it.id == CapabilityId.BACKLASH_OUT }) {
+                        BacklashControl(
+                            title = stringResource(R.string.backlash_out),
+                            enabledValue = backlashOut,
+                            stepsText = backlashOutText,
+                            onStepsChange = { backlashOutText = it.filter(Char::isDigit).take(3) },
+                            error = ui.advancedErrors[CapabilityId.BACKLASH_OUT],
+                            enabled = enabled,
+                            onSave = { flag, steps -> viewModel.updateAdvancedSetting(CapabilityId.BACKLASH_OUT, CapabilityValue.BacklashValue(flag, steps)) },
+                        )
+                    }
+                }
+            }
+        }
+        if (descriptors.any { it.id in setOf(CapabilityId.TEMPERATURE_COMPENSATION, CapabilityId.TEMPERATURE_COMPENSATION_COEFFICIENT, CapabilityId.TEMPERATURE_COMPENSATION_DIRECTION) }) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.advanced_temperature_compensation), fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.advanced_temperature_compensation_warning), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    if (descriptors.any { it.id == CapabilityId.TEMPERATURE_COMPENSATION }) {
+                        AdminSwitch(stringResource(R.string.advanced_temperature_compensation_enabled), temperatureCompensation, enabled) {
+                            viewModel.updateAdvancedSetting(CapabilityId.TEMPERATURE_COMPENSATION, CapabilityValue.BooleanValue(it))
+                        }
+                    }
+                    if (descriptors.any { it.id == CapabilityId.TEMPERATURE_COMPENSATION_DIRECTION }) {
+                        Text(stringResource(R.string.advanced_temperature_compensation_relation))
+                        Box(Modifier.fillMaxWidth()) {
+                            val increaseOnRise = temperatureDirection?.let(::increaseOnTemperatureRiseFromProtocol)
+                            OutlinedButton(
+                                onClick = { temperatureDirectionMenuOpen = true },
+                                enabled = enabled && increaseOnRise != null,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    when (increaseOnRise) {
+                                        true -> stringResource(R.string.advanced_temperature_relation_same)
+                                        false -> stringResource(R.string.advanced_temperature_relation_inverse)
+                                        null -> stringResource(R.string.not_set)
+                                    },
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = temperatureDirectionMenuOpen,
+                                onDismissRequest = { temperatureDirectionMenuOpen = false },
+                            ) {
+                                listOf(
+                                    true to R.string.advanced_temperature_relation_same,
+                                    false to R.string.advanced_temperature_relation_inverse,
+                                ).forEach { (selectedIncreaseOnRise, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(label)) },
+                                        onClick = {
+                                            temperatureDirectionMenuOpen = false
+                                            viewModel.updateAdvancedSetting(
+                                                CapabilityId.TEMPERATURE_COMPENSATION_DIRECTION,
+                                                CapabilityValue.BooleanValue(
+                                                    protocolDirectionForIncreaseOnTemperatureRise(selectedIncreaseOnRise),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (descriptors.any { it.id == CapabilityId.TEMPERATURE_COMPENSATION_COEFFICIENT }) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = temperatureCoefficientText,
+                                onValueChange = { temperatureCoefficientText = it.filter(Char::isDigit).take(4) },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            R.string.advanced_temperature_coefficient,
+                                            ui.temperatureDisplayUnit.degreeSymbol,
+                                        ),
+                                    )
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Button(
+                                onClick = { temperatureCoefficientText.toIntOrNull()?.let { viewModel.updateAdvancedSetting(CapabilityId.TEMPERATURE_COMPENSATION_COEFFICIENT, CapabilityValue.IntegerValue(it)) } },
+                                enabled = enabled && temperatureCoefficientText.toIntOrNull()?.let { it in 0..1000 } == true,
+                            ) { Text(stringResource(R.string.action_set)) }
+                        }
+                    }
+                }
+            }
+        }
+        UiMessages(ui)
+    }
+}
+
+private data class PendingAdminAction(val id: CapabilityId, val value: CapabilityValue)
+
+@Composable
+private fun AdministrativeControlsPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
+    val category = FeatureCategory.ADMINISTRATIVE
+    val descriptors = ui.capabilities?.available(category)?.filter { it.unavailableReason == null }.orEmpty()
+    val ids = descriptors.map { it.id }.toSet()
+    val enabled = ui.focuser.connected && ui.focuser.movement == MovementState.IDLE && !ui.focuser.commandPending
+    var syncText by rememberSaveable { mutableStateOf("") }
+    var deviceMaximumText by rememberSaveable { mutableStateOf("") }
+    var stepMenuOpen by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<PendingAdminAction?>(null) }
+    val stepMode = (ui.advancedValues[CapabilityId.STEP_MODE] as? CapabilityValue.IntegerValue)?.value
+    val coilPower = (ui.advancedValues[CapabilityId.COIL_POWER] as? CapabilityValue.BooleanValue)?.value
+    val displayEnabled = (ui.advancedValues[CapabilityId.DISPLAY_CONFIGURATION] as? CapabilityValue.BooleanValue)?.value
+    val controllerTemperatureUnit = (ui.advancedValues[CapabilityId.TEMPERATURE_UNIT] as? CapabilityValue.ChoiceValue)?.value
+    val geminiHasNoLcd = ui.focuserType == FocuserType.GEMINI_FOCUSER_PRO
+
+    LaunchedEffect(ui.focuser.currentPosition) {
+        if (syncText.isBlank()) syncText = ui.focuser.currentPosition?.toString().orEmpty()
+    }
+    LaunchedEffect(ui.focuser.deviceMaximum) {
+        if (deviceMaximumText.isBlank()) deviceMaximumText = ui.focuser.deviceMaximum?.toString().orEmpty()
+    }
+    val dialogText = when (pending?.id) {
+        CapabilityId.STEP_MODE -> R.string.admin_confirm_step
+        CapabilityId.SYNC_POSITION -> R.string.admin_confirm_sync
+        CapabilityId.SET_MAX_POSITION -> R.string.admin_confirm_max
+        CapabilityId.COIL_POWER -> R.string.admin_confirm_coil
+        CapabilityId.HOME -> R.string.admin_confirm_home
+        CapabilityId.TEMPERATURE_UNIT -> R.string.admin_confirm_temperature_unit
+        else -> null
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.administration_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.administration_description), style = MaterialTheme.typography.bodySmall)
+                if (ui.focuser.positionNeedsSync) {
+                    Text(stringResource(R.string.admin_position_needs_sync), color = MaterialTheme.colorScheme.error)
+                }
+                if (ui.advancedLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (descriptors.isEmpty()) Text(stringResource(R.string.no_admin_capabilities))
+                OutlinedButton(onClick = { viewModel.refreshSettings(category) }, enabled = ui.focuser.connected) {
+                    Text(stringResource(R.string.action_refresh))
+                }
+            }
+        }
+
+        if (CapabilityId.SYNC_POSITION in ids) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.administration_position_display), fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.admin_position_display_description), style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = syncText,
+                        onValueChange = { syncText = it.filter(Char::isDigit).take(6) },
+                        label = { Text(stringResource(R.string.admin_current_position_display)) },
+                        placeholder = { Text(stringResource(R.string.admin_enter_value)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = { syncText.toIntOrNull()?.let { pending = PendingAdminAction(CapabilityId.SYNC_POSITION, CapabilityValue.IntegerValue(it)) } },
+                        enabled = enabled && syncText.toIntOrNull() != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.admin_change_position_display)) }
+                }
+            }
+        }
+
+        if (CapabilityId.STEP_MODE in ids) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.administration_position_scale), fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.admin_step_multiplier_description), style = MaterialTheme.typography.bodySmall)
+                    Box {
+                        OutlinedButton(onClick = { stepMenuOpen = true }, enabled = enabled && !ui.focuser.positionNeedsSync) {
+                            Text(stepMode?.let { "×$it" } ?: stringResource(R.string.not_set))
+                        }
+                        DropdownMenu(expanded = stepMenuOpen, onDismissRequest = { stepMenuOpen = false }) {
+                            listOf(1, 2, 4, 8, 16, 32, 64, 128, 256).forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text("×$mode") },
+                                    onClick = {
+                                        stepMenuOpen = false
+                                        pending = PendingAdminAction(CapabilityId.STEP_MODE, CapabilityValue.IntegerValue(mode))
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Text(stringResource(R.string.admin_step_note), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+        if (CapabilityId.SET_MAX_POSITION in ids) {
+            val requestedMaximum = deviceMaximumText.toIntOrNull()
+            val validMaximum = requestedMaximum != null &&
+                requestedMaximum >= (ui.focuser.currentPosition ?: Int.MAX_VALUE) &&
+                requestedMaximum >= (ui.focuser.softwareMaximum ?: 0)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.administration_device_maximum), fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.admin_device_maximum_description), style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = deviceMaximumText,
+                        onValueChange = { deviceMaximumText = it.filter(Char::isDigit).take(6) },
+                        label = { Text(stringResource(R.string.device_max)) },
+                        placeholder = { Text(stringResource(R.string.admin_enter_value)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            requestedMaximum?.let {
+                                pending = PendingAdminAction(CapabilityId.SET_MAX_POSITION, CapabilityValue.IntegerValue(it))
+                            }
+                        },
+                        enabled = enabled && !ui.focuser.positionNeedsSync && validMaximum,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.admin_set_device_max)) }
+                }
+            }
+        }
+
+        if (descriptors.any { it.id in setOf(CapabilityId.DISPLAY_CONFIGURATION, CapabilityId.TEMPERATURE_UNIT) }) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.administration_display_options), fontWeight = FontWeight.Bold)
+                    if (CapabilityId.DISPLAY_CONFIGURATION in ids) {
+                        AdminSwitch(stringResource(R.string.admin_display), displayEnabled, enabled && !geminiHasNoLcd) {
+                            viewModel.updateCapability(CapabilityId.DISPLAY_CONFIGURATION, CapabilityValue.BooleanValue(it), category)
+                        }
+                        if (geminiHasNoLcd) Text(stringResource(R.string.admin_gemini_no_lcd), style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (CapabilityId.TEMPERATURE_UNIT in ids) {
+                        Text(stringResource(R.string.admin_controller_temperature_unit))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("CELSIUS" to R.string.temperature_unit_celsius, "FAHRENHEIT" to R.string.temperature_unit_fahrenheit).forEach { (unit, label) ->
+                                val action = { pending = PendingAdminAction(CapabilityId.TEMPERATURE_UNIT, CapabilityValue.ChoiceValue(unit)) }
+                                if (controllerTemperatureUnit == unit) Button(onClick = action, enabled = enabled, modifier = Modifier.weight(1f)) { Text(stringResource(label)) }
+                                else OutlinedButton(onClick = action, enabled = enabled, modifier = Modifier.weight(1f)) { Text(stringResource(label)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (descriptors.any { it.id in setOf(CapabilityId.COIL_POWER, CapabilityId.HOME) }) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.administration_motor_control), fontWeight = FontWeight.Bold)
+                    if (CapabilityId.COIL_POWER in ids) {
+                        AdminSwitch(stringResource(R.string.admin_coil_power), coilPower, enabled) {
+                            pending = PendingAdminAction(CapabilityId.COIL_POWER, CapabilityValue.BooleanValue(it))
+                        }
+                        Text(
+                            stringResource(R.string.admin_coil_power_description),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (CapabilityId.HOME in ids) {
+                        Button(
+                            onClick = { pending = PendingAdminAction(CapabilityId.HOME, CapabilityValue.TriggerValue) },
+                            enabled = enabled && !ui.focuser.positionNeedsSync && ui.focuser.currentPosition != null && ui.focuser.softwareMaximum != null,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.admin_home)) }
+                    }
+                }
+            }
+        }
+        UiMessages(ui)
+    }
+
+    if (pending != null && dialogText != null) {
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text(stringResource(R.string.admin_confirm_title)) },
+            text = { Text(stringResource(dialogText)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val action = pending
+                    pending = null
+                    if (action != null) viewModel.updateCapability(action.id, action.value, category)
+                }) { Text(stringResource(R.string.admin_apply)) }
+            },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun AdminSwitch(label: String, checked: Boolean?, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            Modifier.weight(1f),
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+        )
+        Switch(checked = checked ?: false, onCheckedChange = onChange, enabled = enabled && checked != null)
+    }
+}
+
+@Composable
+private fun DeviceAdministrationPage(ui: FocuserUiState, viewModel: FocuserViewModel) {
+    val descriptors = ui.capabilities?.descriptors
+        ?.filter { it.category == FeatureCategory.DEVICE_ADMINISTRATION }
+        ?.filter { showDeviceAdministrationAction(it.id) }
+        .orEmpty()
+    val canExecute = ui.focuser.connected && ui.focuser.movement == MovementState.IDLE && !ui.focuser.commandPending
+    var pendingId by remember { mutableStateOf<CapabilityId?>(null) }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.device_admin_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.device_admin_page_description), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        descriptors.forEach { descriptor ->
+            val available = descriptor.support == CapabilitySupport.SUPPORTED && descriptor.unavailableReason == null
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(deviceAdminTitleRes(descriptor.id)), fontWeight = FontWeight.Bold)
+                    Text(stringResource(deviceAdminDescriptionRes(descriptor.id)), style = MaterialTheme.typography.bodySmall)
+                    if (!available) {
+                        Text(
+                            descriptor.unavailableReason ?: stringResource(R.string.device_admin_unavailable),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Button(
+                        onClick = { pendingId = descriptor.id },
+                        enabled = available && canExecute,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(deviceAdminActionRes(descriptor.id))) }
+                }
+            }
+        }
+        if (descriptors.isEmpty()) Text(stringResource(R.string.device_admin_unavailable), color = MaterialTheme.colorScheme.error)
+        UiMessages(ui)
+    }
+    pendingId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingId = null },
+            title = { Text(stringResource(deviceAdminTitleRes(id))) },
+            text = {
+                Text("${stringResource(deviceAdminDescriptionRes(id))}\n\n${stringResource(R.string.device_admin_confirm)}")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingId = null
+                    viewModel.updateCapability(id, CapabilityValue.TriggerValue, FeatureCategory.DEVICE_ADMINISTRATION)
+                }) { Text(stringResource(deviceAdminActionRes(id))) }
+            },
+            dismissButton = { TextButton(onClick = { pendingId = null }) { Text(stringResource(R.string.action_cancel)) } },
+        )
+    }
+}
+
+private fun deviceAdminTitleRes(id: CapabilityId): Int = when (id) {
+    CapabilityId.PERSIST_SETTINGS -> R.string.device_admin_persist_title
+    CapabilityId.RESTORE_DEFAULTS -> R.string.device_admin_restore_title
+    else -> R.string.device_admin_title
+}
+
+private fun deviceAdminDescriptionRes(id: CapabilityId): Int = when (id) {
+    CapabilityId.PERSIST_SETTINGS -> R.string.device_admin_persist_description
+    CapabilityId.RESTORE_DEFAULTS -> R.string.device_admin_restore_description
+    else -> R.string.device_admin_page_description
+}
+
+private fun deviceAdminActionRes(id: CapabilityId): Int = when (id) {
+    CapabilityId.PERSIST_SETTINGS -> R.string.device_admin_persist_action
+    CapabilityId.RESTORE_DEFAULTS -> R.string.device_admin_restore_action
+    else -> R.string.device_admin_execute
+}
+
+@Composable
+private fun BacklashControl(
+    title: String,
+    enabledValue: CapabilityValue.BacklashValue?,
+    stepsText: String,
+    onStepsChange: (String) -> Unit,
+    error: String?,
+    enabled: Boolean,
+    onSave: (Boolean, Int) -> Unit,
+) {
+    var localEnabled by remember(title) { mutableStateOf(false) }
+    LaunchedEffect(enabledValue?.enabled) { enabledValue?.let { localEnabled = it.enabled } }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f))
+            Switch(
+                checked = localEnabled,
+                onCheckedChange = { localEnabled = it; stepsText.toIntOrNull()?.let { value -> onSave(it, value) } },
+                enabled = enabled && enabledValue != null,
+            )
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = stepsText,
+                onValueChange = onStepsChange,
+                label = { Text(stringResource(R.string.backlash_steps)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                enabled = enabled,
+            )
+            Button(onClick = {
+                stepsText.toIntOrNull()?.takeIf { it in 0..255 }?.let { onSave(localEnabled, it) }
+            }, enabled = enabled && enabledValue != null && stepsText.toIntOrNull()?.let { it in 0..255 } == true) {
+                Text(stringResource(R.string.action_set))
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
